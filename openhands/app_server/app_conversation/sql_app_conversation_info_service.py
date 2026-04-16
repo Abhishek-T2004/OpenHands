@@ -21,7 +21,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 from uuid import UUID
 
 from fastapi import Request
@@ -331,6 +331,45 @@ class SQLAppConversationInfoService(AppConversationInfoService):
 
         return results
 
+    def _non_metrics_metadata_fields(
+        self, info: AppConversationInfo
+    ) -> dict[str, Any]:
+        return {
+            'selected_repository': info.selected_repository,
+            'selected_branch': info.selected_branch,
+            'git_provider': info.git_provider.value if info.git_provider else None,
+            'title': info.title,
+            'last_updated_at': info.updated_at,
+            'trigger': info.trigger.value if info.trigger else None,
+            'pr_number': info.pr_number or [],
+            'llm_model': info.llm_model,
+            'sandbox_id': info.sandbox_id,
+            'parent_conversation_id': (
+                str(info.parent_conversation_id)
+                if info.parent_conversation_id
+                else None
+            ),
+            'public': info.public,
+            'tags': info.tags or None,
+        }
+
+    def _create_metrics_metadata_fields(
+        self, info: AppConversationInfo
+    ) -> dict[str, Any]:
+        metrics = info.metrics or MetricsSnapshot()
+        usage = metrics.accumulated_token_usage or TokenUsage()
+        return {
+            'accumulated_cost': metrics.accumulated_cost,
+            'prompt_tokens': usage.prompt_tokens,
+            'completion_tokens': usage.completion_tokens,
+            'total_tokens': 0,
+            'max_budget_per_task': metrics.max_budget_per_task,
+            'cache_read_tokens': usage.cache_read_tokens,
+            'cache_write_tokens': usage.cache_write_tokens,
+            'context_window': usage.context_window,
+            'per_turn_token': usage.per_turn_token,
+        }
+
     async def save_app_conversation_info(
         self, info: AppConversationInfo
     ) -> AppConversationInfo:
@@ -342,74 +381,23 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         fields are updated. For new records, all fields including metrics
         from the incoming info are used.
         """
-        # Check if record already exists
         existing_query = select(StoredConversationMetadata).where(
             StoredConversationMetadata.conversation_id == str(info.id)
         )
         result = await self.db_session.execute(existing_query)
         existing = result.scalar_one_or_none()
+        shared_fields = self._non_metrics_metadata_fields(info)
 
         if existing:
-            # Update existing record - preserve metrics fields to avoid
-            # overwriting values set by update_conversation_statistics
-            existing.selected_repository = info.selected_repository
-            existing.selected_branch = info.selected_branch
-            existing.git_provider = (
-                info.git_provider.value if info.git_provider else None
-            )
-            existing.title = info.title
-            existing.last_updated_at = info.updated_at
-            existing.trigger = info.trigger.value if info.trigger else None
-            existing.pr_number = info.pr_number or []
-            existing.llm_model = info.llm_model
-            existing.sandbox_id = info.sandbox_id
-            existing.parent_conversation_id = (
-                str(info.parent_conversation_id)
-                if info.parent_conversation_id
-                else None
-            )
-            existing.public = info.public
-            existing.tags = info.tags if info.tags else None
-            # Note: We intentionally do NOT update metrics fields here:
-            # accumulated_cost, prompt_tokens, completion_tokens, total_tokens,
-            # max_budget_per_task, cache_read_tokens, cache_write_tokens,
-            # reasoning_tokens, context_window, per_turn_token
-            # These are managed by update_conversation_statistics via stats events
+            for field, value in shared_fields.items():
+                setattr(existing, field, value)
         else:
-            # Create new record with all fields including metrics
-            metrics = info.metrics or MetricsSnapshot()
-            usage = metrics.accumulated_token_usage or TokenUsage()
-
             stored = StoredConversationMetadata(
                 conversation_id=str(info.id),
-                selected_repository=info.selected_repository,
-                selected_branch=info.selected_branch,
-                git_provider=info.git_provider.value if info.git_provider else None,
-                title=info.title,
-                last_updated_at=info.updated_at,
                 created_at=info.created_at,
-                trigger=info.trigger.value if info.trigger else None,
-                pr_number=info.pr_number or [],
-                # Cost and token metrics - only set on creation
-                accumulated_cost=metrics.accumulated_cost,
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                total_tokens=0,
-                max_budget_per_task=metrics.max_budget_per_task,
-                cache_read_tokens=usage.cache_read_tokens,
-                cache_write_tokens=usage.cache_write_tokens,
-                context_window=usage.context_window,
-                per_turn_token=usage.per_turn_token,
-                llm_model=info.llm_model,
                 conversation_version='V1',
-                sandbox_id=info.sandbox_id,
-                parent_conversation_id=(
-                    str(info.parent_conversation_id)
-                    if info.parent_conversation_id
-                    else None
-                ),
-                public=info.public,
-                tags=info.tags if info.tags else None,
+                **shared_fields,
+                **self._create_metrics_metadata_fields(info),
             )
             self.db_session.add(stored)
 
