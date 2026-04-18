@@ -32,9 +32,8 @@ COPY --chown=openhands:openhands enterprise/pyproject.toml enterprise/poetry.loc
 RUN cd /tmp/enterprise && \
     # Export only main dependencies with hashes for supply chain security
     /app/.venv/bin/poetry export --only main -o requirements.txt && \
-    # Remove dependencies already in base image (openhands-ai, openhands-sdk packages)
-    # Also remove git-based deps (they're from base image when using SDK PR pins)
-    sed -i '/^-e /d; /openhands-ai/d; /openhands-sdk/d; /openhands-agent-server/d; /openhands-tools/d; /@ git+/d' requirements.txt && \
+    # Remove the local path dependency (openhands-ai is already in base image)
+    sed -i '/^-e /d; /openhands-ai/d' requirements.txt && \
     # Install pinned dependencies from lock file
     /app/.venv/bin/pip install -r requirements.txt && \
     # Cleanup - return to /app before removing /tmp/enterprise
