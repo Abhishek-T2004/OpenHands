@@ -267,7 +267,8 @@ class SQLAppConversationStartTaskService(AppConversationStartTaskService):
         result = await self.session.execute(delete_query)
 
         # Return True if any rows were affected
-        return result.rowcount > 0
+        # CursorResult from DML statements has rowcount
+        return result.rowcount > 0  # type: ignore[attr-defined]
 
 
 class SQLAppConversationStartTaskServiceInjector(

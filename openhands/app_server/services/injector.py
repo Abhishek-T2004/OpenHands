@@ -1,5 +1,6 @@
 import contextlib
 from abc import ABC, abstractmethod
+from contextlib import AbstractAsyncContextManager
 from typing import AsyncGenerator, Generic, TypeAlias, TypeVar
 
 from fastapi import Request
@@ -20,11 +21,17 @@ class Injector(Generic[T], ABC):
         reuse by other injectors, as injection operations may be nested."""
         yield None  # type: ignore
 
+    def context(
+        self, state: InjectorState, request: Request | None = None
+    ) -> AbstractAsyncContextManager[T]:
+        """Context function suitable for use in async with clauses"""
+        return self._context(state, request)
+
     @contextlib.asynccontextmanager
-    async def context(
+    async def _context(
         self, state: InjectorState, request: Request | None = None
     ) -> AsyncGenerator[T, None]:
-        """Context function suitable for use in async with clauses"""
+        """Internal context manager implementation."""
         async for result in self.inject(state, request):
             yield result
 

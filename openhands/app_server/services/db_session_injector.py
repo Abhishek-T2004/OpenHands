@@ -24,7 +24,7 @@ DB_SESSION_ATTR = 'db_session'
 DB_SESSION_KEEP_OPEN_ATTR = 'db_session_keep_open'
 
 
-class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
+class DbSessionInjector(BaseModel, Injector[AsyncSession]):
     persistence_dir: Path
     host: str | None = None
     port: int | None = None
@@ -174,7 +174,7 @@ class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
                         "PostgreSQL driver 'asyncpg' is required for async connections but is not installed."
                     ) from e
                 password = self.password.get_secret_value() if self.password else None
-                url = URL.create(
+                url: str | URL = URL.create(
                     'postgresql+asyncpg',
                     username=self.user or '',
                     password=password,
@@ -182,10 +182,6 @@ class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
                     port=self.port,
                     database=self.name,
                 )
-            else:
-                url = f'sqlite+aiosqlite:///{str(self.persistence_dir)}/openhands.db'
-
-            if self.host:
                 async_engine = create_async_engine(
                     url,
                     pool_size=self.pool_size,
@@ -194,8 +190,11 @@ class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
                     pool_pre_ping=True,
                 )
             else:
+                sqlite_url = (
+                    f'sqlite+aiosqlite:///{str(self.persistence_dir)}/openhands.db'
+                )
                 async_engine = create_async_engine(
-                    url,
+                    sqlite_url,
                     poolclass=NullPool,
                     pool_pre_ping=True,
                 )
@@ -217,7 +216,7 @@ class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
                         "PostgreSQL driver 'pg8000' is required for sync connections but is not installed."
                     ) from e
                 password = self.password.get_secret_value() if self.password else None
-                url = URL.create(
+                url: str | URL = URL.create(
                     'postgresql+pg8000',
                     username=self.user or '',
                     password=password,
@@ -225,15 +224,22 @@ class DbSessionInjector(BaseModel, Injector[async_sessionmaker]):
                     port=self.port,
                     database=self.name,
                 )
+                engine = create_engine(
+                    url,
+                    pool_size=self.pool_size,
+                    max_overflow=self.max_overflow,
+                    pool_recycle=self.pool_recycle,
+                    pool_pre_ping=True,
+                )
             else:
-                url = f'sqlite:///{self.persistence_dir}/openhands.db'
-            engine = create_engine(
-                url,
-                pool_size=self.pool_size,
-                max_overflow=self.max_overflow,
-                pool_recycle=self.pool_recycle,
-                pool_pre_ping=True,
-            )
+                sqlite_url = f'sqlite:///{self.persistence_dir}/openhands.db'
+                engine = create_engine(
+                    sqlite_url,
+                    pool_size=self.pool_size,
+                    max_overflow=self.max_overflow,
+                    pool_recycle=self.pool_recycle,
+                    pool_pre_ping=True,
+                )
         self._engine = engine
         return engine
 

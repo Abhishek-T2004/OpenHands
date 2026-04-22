@@ -26,6 +26,7 @@ from uuid import UUID
 
 from fastapi import Request
 from sqlalchemy import (
+    ColumnElement,
     DateTime,
     Select,
     String,
@@ -241,7 +242,7 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         sandbox_id__eq: str | None = None,
     ) -> Select:
         # Apply the same filters as search_app_conversations
-        conditions = []
+        conditions: list[ColumnElement[bool]] = []
         if title__contains is not None:
             conditions.append(
                 StoredConversationMetadata.title.like(f'%{title__contains}%')
@@ -539,9 +540,9 @@ class SQLAppConversationInfoService(AppConversationInfoService):
             accumulated_token_usage=token_usage,
         )
 
-        # Get timestamps
-        created_at = self._fix_timezone(stored.created_at)
-        updated_at = self._fix_timezone(stored.last_updated_at)
+        # Get timestamps with UTC fallback for missing values
+        created_at = self._fix_timezone(stored.created_at) or utc_now()
+        updated_at = self._fix_timezone(stored.last_updated_at) or utc_now()
 
         return AppConversationInfo(
             id=UUID(stored.conversation_id),
@@ -569,10 +570,12 @@ class SQLAppConversationInfoService(AppConversationInfoService):
             updated_at=updated_at,
         )
 
-    def _fix_timezone(self, value: datetime) -> datetime:
-        """Sqlite does not stpre timezones - and since we can't update the existing models
+    def _fix_timezone(self, value: datetime | None) -> datetime | None:
+        """Sqlite does not store timezones - and since we can't update the existing models
         we assume UTC if the timezone is missing.
         """
+        if value is None:
+            return None
         if not value.tzinfo:
             value = value.replace(tzinfo=UTC)
         return value
@@ -595,7 +598,8 @@ class SQLAppConversationInfoService(AppConversationInfoService):
         # Execute the secure delete query
         result = await self.db_session.execute(delete_query)
 
-        return result.rowcount > 0
+        # CursorResult from DML statements has rowcount
+        return result.rowcount > 0  # type: ignore[attr-defined]
 
 
 class SQLAppConversationInfoServiceInjector(AppConversationInfoServiceInjector):
