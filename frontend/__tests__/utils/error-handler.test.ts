@@ -6,7 +6,7 @@ import {
   showChatError,
 } from "#/utils/error-handler";
 import * as Actions from "#/services/actions";
-import * as CustomToast from "#/utils/custom-toast-handlers";
+import * as PackageCustomToast from "@openhands/agent-server-gui/src/utils/custom-toast-handlers";
 
 vi.mock("posthog-js", () => ({
   default: {
@@ -70,7 +70,7 @@ describe("Error Handler", () => {
   });
 
   describe("showErrorToast", () => {
-    const errorToastSpy = vi.spyOn(CustomToast, "displayErrorToast");
+    const errorToastSpy = vi.spyOn(PackageCustomToast, "displayErrorToast");
     it("should log error and show toast", () => {
       const error = {
         message: "Toast error",
