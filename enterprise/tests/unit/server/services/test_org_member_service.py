@@ -17,7 +17,6 @@ from server.routes.org_models import (
     RoleNotFoundError,
 )
 from server.services.org_member_service import OrgMemberService
-from storage.org import Org
 from storage.org_member import OrgMember
 from storage.role import Role
 from storage.user import User
@@ -2380,6 +2379,8 @@ class TestOrgMemberServiceConcurrencyLimits:
     @pytest.fixture
     def mock_org(self, org_id):
         """Create a mock organization with max_concurrent_sandboxes."""
+        from storage.org import Org
+
         org = MagicMock(spec=Org)
         org.id = org_id
         org.max_concurrent_sandboxes = 5
