@@ -522,7 +522,6 @@ class RemoteSandboxService(SandboxService):
         """
         from openhands.app_server.errors import ConcurrencyLimitError
 
-
         effective_limit = await self._get_user_effective_sandbox_limit()
         current_count = await self._count_user_running_sandboxes()
 
