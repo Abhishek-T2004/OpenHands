@@ -394,6 +394,12 @@ class TestSandboxLifecycle:
         remote_sandbox_service.httpx_client.request.return_value = mock_response
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
 
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
+
         # Mock database operations
         remote_sandbox_service.db_session.add = MagicMock()
         remote_sandbox_service.db_session.commit = AsyncMock()
@@ -405,9 +411,6 @@ class TestSandboxLifecycle:
         # Verify
         assert sandbox_info.id == 'test-sandbox-123'
         assert sandbox_info.status == SandboxStatus.RUNNING
-        remote_sandbox_service.pause_old_sandboxes.assert_called_once_with(
-            9
-        )  # max_num_sandboxes - 1
         remote_sandbox_service.db_session.add.assert_called_once()
         remote_sandbox_service.db_session.commit.assert_not_called()
 
@@ -421,6 +424,13 @@ class TestSandboxLifecycle:
         mock_response.json.return_value = create_runtime_data()
         remote_sandbox_service.httpx_client.request.return_value = mock_response
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
+
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
+
         remote_sandbox_service.db_session.add = MagicMock()
         remote_sandbox_service.db_session.commit = AsyncMock()
 
@@ -442,6 +452,12 @@ class TestSandboxLifecycle:
         mock_sandbox_spec_service.get_sandbox_spec.return_value = None
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
 
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
+
         # Execute & Verify
         with pytest.raises(ValueError, match='Sandbox Spec not found'):
             await remote_sandbox_service.start_sandbox('non-existent-spec')
@@ -458,6 +474,12 @@ class TestSandboxLifecycle:
         )
         remote_sandbox_service.httpx_client.request.return_value = mock_response
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
+
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
 
         # Mock database operations
         remote_sandbox_service.db_session.add = MagicMock()
@@ -482,6 +504,13 @@ class TestSandboxLifecycle:
             'API Error'
         )
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
+
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
+
         remote_sandbox_service.db_session.add = MagicMock()
         remote_sandbox_service.db_session.commit = AsyncMock()
 
@@ -499,6 +528,13 @@ class TestSandboxLifecycle:
         mock_response.json.return_value = create_runtime_data()
         remote_sandbox_service.httpx_client.request.return_value = mock_response
         remote_sandbox_service.pause_old_sandboxes = AsyncMock(return_value=[])
+
+        # Mock concurrency limit methods
+        remote_sandbox_service._get_user_effective_sandbox_limit = AsyncMock(
+            return_value=10
+        )
+        remote_sandbox_service._count_user_running_sandboxes = AsyncMock(return_value=0)
+
         remote_sandbox_service.db_session.add = MagicMock()
         remote_sandbox_service.db_session.commit = AsyncMock()
 
