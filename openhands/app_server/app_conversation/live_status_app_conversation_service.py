@@ -1755,7 +1755,7 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
         #
         # TODO: remove this app-server-side suppression once OpenHands is
         # pinned to the SDK version that includes
-        # OpenHands/software-agent-sdk#3091 (_ENV_CONFLICT_MAP in ACPAgent).
+        # OpenHands/software-agent-sdk#3092 (_ENV_CONFLICT_MAP in ACPAgent).
         # That PR moves the conflict-suppression logic into _start_acp_server
         # where it fires for every caller, not just the app-server path.
         provider_env = {
