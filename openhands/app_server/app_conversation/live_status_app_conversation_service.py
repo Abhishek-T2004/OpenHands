@@ -1499,19 +1499,16 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
                 role = event.llm_message.role
                 role_label = '[USER]' if role == 'user' else '[ASSISTANT]'
                 content = event.llm_message.content
-                if isinstance(content, str):
-                    text = content.strip()
-                else:
-                    text_parts = []
-                    for c in content:
-                        if isinstance(c, TextContent):
-                            text_parts.append(c.text)
-                        else:
-                            _logger.warning(
-                                'Skipping non-text content in ACP resume: %s',
-                                type(c).__name__,
-                            )
-                    text = ' '.join(text_parts).strip()
+                text_parts = []
+                for c in content:
+                    if isinstance(c, TextContent):
+                        text_parts.append(c.text)
+                    else:
+                        _logger.warning(
+                            'Skipping non-text content in ACP resume: %s',
+                            type(c).__name__,
+                        )
+                text = ' '.join(text_parts).strip()
                 if text:
                     lines.append(f'{role_label}: {text}')
                     lines.append('')

@@ -3430,10 +3430,13 @@ class TestSynthesizeAcpResumeInitialMessage:
 
     def _make_message_event(self, role, text):
         from openhands.sdk import MessageEvent
-        from openhands.sdk.llm.message import Message, TextContent as MsgTextContent
+        from openhands.sdk.llm.message import Message
+        from openhands.sdk.llm.message import TextContent as MsgTextContent
 
         msg = Message(role=role, content=[MsgTextContent(type='text', text=text)])
-        return MessageEvent(source='user' if role == 'user' else 'agent', llm_message=msg)
+        return MessageEvent(
+            source='user' if role == 'user' else 'agent', llm_message=msg
+        )
 
     def _make_tool_event(self, title, is_error=False, status=None):
         from openhands.sdk.event.acp_tool_call import ACPToolCallEvent
