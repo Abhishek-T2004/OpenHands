@@ -14,6 +14,13 @@ import { queryClient } from "./query-client-config";
 import { PostHogWrapper } from "./components/providers/posthog-wrapper";
 
 async function prepareApp() {
+  // Custom deployment marker for OpenHands Enterprise testing
+  // eslint-disable-next-line no-console
+  console.log(
+    "%c🚀 OpenHands Enterprise Test Environment",
+    "color: #10b981; font-weight: bold; font-size: 14px;",
+  );
+
   if (
     process.env.NODE_ENV === "development" &&
     import.meta.env.VITE_MOCK_API === "true"
