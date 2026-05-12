@@ -1869,6 +1869,23 @@
     "uk": "Агент",
     "ca": "Agent"
   },
+  "SETTINGS$AGENT_DISABLED_TOOLTIP": {
+    "en": "This setting is disabled when using {{agentName}}",
+    "ja": "{{agentName}} の使用中はこの設定を変更できません",
+    "zh-CN": "使用 {{agentName}} 时此设置不可用",
+    "zh-TW": "使用 {{agentName}} 時無法變更此設定",
+    "ko-KR": "{{agentName}}을(를) 사용 중일 때는 이 설정을 변경할 수 없습니다",
+    "no": "Denne innstillingen er deaktivert når du bruker {{agentName}}",
+    "ar": "تم تعطيل هذا الإعداد عند استخدام {{agentName}}",
+    "de": "Diese Einstellung ist deaktiviert, wenn {{agentName}} verwendet wird",
+    "fr": "Ce paramètre est désactivé lorsque vous utilisez {{agentName}}",
+    "it": "Questa impostazione è disabilitata quando si utilizza {{agentName}}",
+    "pt": "Esta configuração está desativada ao usar {{agentName}}",
+    "es": "Este ajuste está deshabilitado al usar {{agentName}}",
+    "ca": "Aquesta opció està desactivada quan utilitzes {{agentName}}",
+    "tr": "{{agentName}} kullanılırken bu ayar devre dışıdır",
+    "uk": "Цей параметр недоступний під час використання {{agentName}}"
+  },
   "SETTINGS$ENABLE_MEMORY_CONDENSATION": {
     "en": "Enable memory condensation",
     "ja": "メモリ凝縮を有効にする",

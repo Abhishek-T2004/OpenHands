@@ -22,6 +22,8 @@ export interface SettingsNavItem {
   to: string;
   text: string;
   section?: SettingsNavSection;
+  // When true, this item is only shown if the `enable_acp` feature flag is on.
+  acpGated?: boolean;
 }
 
 export const SAAS_NAV_ITEMS: SettingsNavItem[] = [
@@ -54,6 +56,13 @@ export const SAAS_NAV_ITEMS: SettingsNavItem[] = [
     to: "/settings/org-defaults/verification",
     text: "SETTINGS$NAV_VERIFICATION",
     section: "org",
+  },
+  {
+    icon: <CircuitIcon width={22} height={22} />,
+    to: "/settings/agent",
+    text: "SETTINGS$AGENT",
+    section: "personal",
+    acpGated: true,
   },
   {
     icon: <CircuitIcon width={22} height={22} />,
@@ -124,6 +133,12 @@ export const SAAS_NAV_ITEMS: SettingsNavItem[] = [
 ];
 
 export const OSS_NAV_ITEMS: SettingsNavItem[] = [
+  {
+    icon: <CircuitIcon width={22} height={22} />,
+    to: "/settings/agent",
+    text: "SETTINGS$AGENT",
+    acpGated: true,
+  },
   {
     icon: <CircuitIcon width={22} height={22} />,
     to: "/settings",
