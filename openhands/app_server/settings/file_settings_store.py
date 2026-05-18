@@ -12,7 +12,7 @@ from openhands.app_server.utils.async_utils import call_sync_from_async
 @dataclass
 class FileSettingsStore(SettingsStore):
     file_store: FileStore
-    path: str = "settings.json"
+    path: str = 'settings.json'
 
     async def load(self) -> Settings | None:
         try:
@@ -21,12 +21,12 @@ class FileSettingsStore(SettingsStore):
             # Seed a Default profile from legacy agent_settings.llm when
             # llm_profiles is absent — pre-llm_profiles settings.json files
             # would otherwise present an empty profiles UI on upgrade.
-            if "llm_profiles" not in kwargs:
-                legacy_llm = (kwargs.get("agent_settings") or {}).get("llm")
-                if isinstance(legacy_llm, dict) and legacy_llm.get("model"):
-                    kwargs["llm_profiles"] = {
-                        "profiles": {"Default": legacy_llm},
-                        "active": "Default",
+            if 'llm_profiles' not in kwargs:
+                legacy_llm = (kwargs.get('agent_settings') or {}).get('llm')
+                if isinstance(legacy_llm, dict) and legacy_llm.get('model'):
+                    kwargs['llm_profiles'] = {
+                        'profiles': {'Default': legacy_llm},
+                        'active': 'Default',
                     }
             settings = Settings(**kwargs)
 
@@ -40,7 +40,7 @@ class FileSettingsStore(SettingsStore):
 
     async def store(self, settings: Settings) -> None:
         json_str = settings.model_dump_json(
-            context={"expose_secrets": True, "persist_settings": True}
+            context={'expose_secrets': True, 'persist_settings': True}
         )
         await call_sync_from_async(self.file_store.write, self.path, json_str)
 
