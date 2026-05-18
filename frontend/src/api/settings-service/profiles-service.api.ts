@@ -1,8 +1,13 @@
 import { openHands } from "../open-hands-axios";
 
+export type AgentKind = "openhands" | "acp";
+
 export interface LlmProfileSummary {
   name: string;
+  agent_kind: AgentKind;
   model: string | null;
+  acp_server: string | null;
+  acp_model: string | null;
   base_url: string | null;
   api_key_set: boolean;
 }
@@ -13,8 +18,20 @@ interface LlmProfileListResponse {
   active_profile: string | null;
 }
 
+export interface AgentProfilePayload {
+  agent_kind: AgentKind;
+  model?: string;
+  api_key?: string | null;
+  base_url?: string | null;
+  acp_server?: string | null;
+  acp_model?: string | null;
+}
+
 export interface SaveLlmProfileRequest {
   include_secrets?: boolean;
+  /** Explicit agent profile (OpenHands or ACP). Takes precedence over ``llm``. */
+  profile?: AgentProfilePayload;
+  /** Legacy field for backward compatibility — treated as an OpenHands profile. */
   llm?: {
     model: string;
     base_url?: string | null;

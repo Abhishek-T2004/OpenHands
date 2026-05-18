@@ -20,9 +20,11 @@ from openhands.app_server.integrations.provider import (
 from openhands.app_server.secrets.secrets_models import Secrets
 from openhands.app_server.secrets.secrets_store import SecretsStore
 from openhands.app_server.settings.llm_profiles import (
+    AgentProfile,
     ProfileAlreadyExistsError,
     ProfileLimitExceededError,
     ProfileNotFoundError,
+    StrictAgentProfile,
     StrictLLM,
     has_real_api_key,
 )
@@ -47,6 +49,7 @@ from openhands.app_server.utils.llm import (
 from openhands.app_server.utils.logger import openhands_logger as logger
 from openhands.sdk.llm import LLM
 from openhands.sdk.settings import (
+    ACPAgentSettings,
     ConversationSettings,
     OpenHandsAgentSettings,
     export_agent_settings_schema,
@@ -340,10 +343,17 @@ class ProfileInfo(BaseModel):
     ``api_key_set`` follows the same convention as ``llm_api_key_set`` on
     the main settings response — the frontend uses it to show "key stored"
     without exposing (or accidentally round-tripping) a mask string.
+
+    ``agent_kind`` distinguishes OpenHands LLM profiles (``'openhands'``) from
+    ACP profiles (``'acp'``).  Old clients that don't read this field continue
+    to work because all new fields have defaults.
     """
 
     name: str
+    agent_kind: str = 'openhands'
     model: str | None = None
+    acp_server: str | None = None
+    acp_model: str | None = None
     base_url: str | None = None
     api_key_set: bool = False
 
@@ -381,7 +391,9 @@ class ActivateProfileResponse(BaseModel):
 
     name: str
     message: str
+    agent_kind: str = 'openhands'
     model: str | None = None
+    acp_server: str | None = None
 
 
 class RenameProfileRequest(BaseModel):
@@ -402,20 +414,24 @@ class RenameProfileRequest(BaseModel):
 class SaveProfileRequest(BaseModel):
     """Request body for saving a profile.
 
-    If ``llm`` is provided, it is used as the profile config; otherwise the
-    current ``agent_settings.llm`` is saved. The ``llm`` field is typed as
-    :class:`StrictLLM`, which forbids unknown keys — so a typo like
-    ``{"llm": {"custom_header": "x"}}`` returns 422 instead of being silently
-    dropped.
+    Resolution order for the profile config to save:
 
-    **Security note:** when ``llm.api_key`` is included in the request body,
-    it is transmitted in plaintext over the wire and present in any request
-    log or error trace that captures request bodies. ``SecretStr`` masks it
-    in Pydantic reprs, but callers and operators should still avoid logging
-    raw request bodies on this endpoint.
+    1. ``profile`` — explicit :class:`AgentProfile` payload (supports both
+       OpenHands and ACP profiles).
+    2. ``llm`` — legacy field kept for backward compatibility; treated as an
+       OpenHands profile when ``profile`` is absent.
+    3. Neither — snapshot the current ``agent_settings`` (OpenHands or ACP).
+
+    Both ``profile`` and ``llm`` are validated with ``extra='forbid'`` so
+    typos return 422 instead of being silently dropped.
+
+    **Security note:** ``api_key`` values are transmitted in plaintext over
+    the wire. Callers and operators should avoid logging raw request bodies
+    on this endpoint.
     """
 
     include_secrets: bool = True
+    profile: StrictAgentProfile | None = None
     llm: StrictLLM | None = None
 
 
@@ -492,30 +508,42 @@ async def save_profile(
                 detail='Settings not found',
             )
 
-        llm: LLM
-        if request.llm is not None:
+        # Resolve which AgentProfile to save:
+        # 1. Explicit ``profile`` payload (OpenHands or ACP).
+        # 2. Legacy ``llm`` payload → treat as OpenHands profile.
+        # 3. Snapshot current agent_settings.
+        agent_profile: AgentProfile
+        if request.profile is not None:
+            agent_profile = request.profile
+            # Preserve the stored api_key when the caller omits it (e.g. a
+            # frontend round-tripping a GET response where the key was nulled).
+            if agent_profile.api_key is None:
+                existing = settings.llm_profiles.get(name)
+                if existing is not None and existing.api_key is not None:
+                    agent_profile = agent_profile.model_copy(
+                        update={'api_key': existing.api_key}
+                    )
+        elif request.llm is not None:
             llm = request.llm
-            # Preserve the existing api_key when the caller omits it on
-            # update (e.g. a frontend round-tripping a GET response where
-            # the key was nulled out). Mirrors the deep-merge behaviour
-            # the main ``POST /api/v1/settings`` relies on.
             if llm.api_key is None:
                 existing = settings.llm_profiles.get(name)
                 if existing is not None and existing.api_key is not None:
                     llm = llm.model_copy(update={'api_key': existing.api_key})
+            agent_profile = AgentProfile.from_llm(llm)
         else:
-            llm = settings.agent_settings.llm
+            agent_profile = AgentProfile.from_acp_settings(settings.agent_settings) \
+                if isinstance(settings.agent_settings, ACPAgentSettings) \
+                else AgentProfile.from_llm(settings.agent_settings.llm)
 
         try:
             settings.llm_profiles.save(
-                name, llm, include_secrets=request.include_secrets
+                name, agent_profile, include_secrets=request.include_secrets
             )
         except ProfileLimitExceededError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(exc)
             ) from exc
-        # Without this, overwriting the active profile leaves
-        # agent_settings.llm stale — active would lie about what's running.
+        # Without this, overwriting the active profile leaves active stale.
         settings.reconcile_active_profile()
         await settings_store.store(settings)
 
@@ -568,13 +596,21 @@ async def activate_profile(
                 detail=str(exc),
             ) from exc
 
-        _post_merge_llm_fixups(settings)
+        # base_url fixups only apply to OpenHands LLM profiles; ACP providers
+        # manage their own endpoint routing via env vars.
+        if isinstance(settings.agent_settings, OpenHandsAgentSettings):
+            _post_merge_llm_fixups(settings)
         await settings_store.store(settings)
 
+    profile = settings.llm_profiles.get(name)
     return ActivateProfileResponse(
         name=name,
         message=f"Switched to profile '{name}'",
+        agent_kind=profile.agent_kind if profile else 'openhands',
         model=settings.agent_settings.llm.model,
+        acp_server=settings.agent_settings.acp_server
+        if isinstance(settings.agent_settings, ACPAgentSettings)
+        else None,
     )
 
 

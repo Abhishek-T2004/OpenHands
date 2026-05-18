@@ -40,7 +40,16 @@ export function ProfileRow({
         >
           {profile.name}
         </Typography.Text>
-        {profile.model ? (
+        {profile.agent_kind === "acp" ? (
+          <Typography.Text
+            className="text-sm text-gray-400 truncate min-w-0 max-w-full"
+            title={[profile.acp_server, profile.acp_model]
+              .filter(Boolean)
+              .join(" · ")}
+          >
+            {[profile.acp_server, profile.acp_model].filter(Boolean).join(" · ")}
+          </Typography.Text>
+        ) : profile.model ? (
           <Typography.Text
             className="text-sm text-gray-400 truncate min-w-0 max-w-full"
             title={profile.model}

@@ -22,7 +22,10 @@ from openhands.app_server.integrations.service_types import UserGitInfo
 from openhands.app_server.secrets.secrets_models import Secrets
 from openhands.app_server.secrets.secrets_store import SecretsStore
 from openhands.app_server.settings.file_settings_store import FileSettingsStore
-from openhands.app_server.settings.llm_profiles import MAX_PROFILES_PER_USER
+from openhands.app_server.settings.llm_profiles import (
+    MAX_PROFILES_PER_USER,
+    AgentProfile,
+)
 from openhands.app_server.settings.settings_models import Settings
 from openhands.app_server.settings.settings_router import _user_profile_locks
 from openhands.app_server.settings.settings_store import SettingsStore
@@ -370,9 +373,9 @@ async def test_edit_profile_round_trip_preserves_api_key(test_client, settings_s
     """Frontend GET→edit→POST flow must not corrupt the stored key.
 
     The GET response returns ``api_key: null``; when the frontend echoes
-    that back in the POST body, the server has to preserve the stored
-    key rather than overwrite with None. This is the concrete
-    mask-poisoning regression we fixed.
+    that back in the POST body (via the ``profile`` field), the server must
+    preserve the stored key rather than overwrite with None. This is the
+    concrete mask-poisoning regression we fixed.
     """
     await _seed(settings_store, _base_settings())
     test_client.post(
@@ -384,8 +387,10 @@ async def test_edit_profile_round_trip_preserves_api_key(test_client, settings_s
     fetched['config']['model'] = 'anthropic/claude-opus-4'  # user edits model
     assert fetched['config']['api_key'] is None  # GET returns null, not mask
 
+    # Round-trip via the ``profile`` field (supports the full AgentProfile shape
+    # including agent_kind, acp_server, acp_model returned by GET).
     resp = test_client.post(
-        '/api/v1/settings/profiles/p', json={'llm': fetched['config']}
+        '/api/v1/settings/profiles/p', json={'profile': fetched['config']}
     )
     assert resp.status_code == 201
 

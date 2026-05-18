@@ -3,9 +3,12 @@ import { AxiosError } from "axios";
 import { useTranslation } from "react-i18next";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { LlmSettingsInputsSkeleton } from "#/components/features/settings/llm-settings/llm-settings-inputs-skeleton";
+import { ProfileNameInput } from "#/components/features/settings/profile-name-input";
 import { SettingsDropdownInput } from "#/components/features/settings/settings-dropdown-input";
 import { SettingsInput } from "#/components/features/settings/settings-input";
 import { SettingsSwitch } from "#/components/features/settings/settings-switch";
+import { useActivateLlmProfile } from "#/hooks/mutation/use-activate-llm-profile";
+import { useSaveLlmProfile } from "#/hooks/mutation/use-save-llm-profile";
 import { useSaveSettings } from "#/hooks/mutation/use-save-settings";
 import { useAgentSettingsSchema } from "#/hooks/query/use-agent-settings-schema";
 import { useConfig } from "#/hooks/query/use-config";
@@ -98,11 +101,15 @@ export default function AgentSettingsScreen() {
     setIsSubAgentsEnabled(initialSubAgentsEnabled);
   }, [initialSubAgentsEnabled]);
 
+  const saveProfile = useSaveLlmProfile();
+  const activateProfile = useActivateLlmProfile();
+
   // ── ACP (ACP mode) ───────────────────────────────────────────────────────
   const [agentType, setAgentType] = useState<"openhands" | "acp">("openhands");
   const [commandText, setCommandText] = useState("");
   const [acpModel, setAcpModel] = useState("");
   const [isDirty, setIsDirty] = useState(false);
+  const [acpProfileName, setAcpProfileName] = useState("");
 
   // Prevent re-initialising ACP fields on every config refetch; only
   // reinitialise when the server returns a new settings object.
@@ -188,9 +195,28 @@ export default function AgentSettingsScreen() {
           const message = retrieveAxiosErrorMessage(error as AxiosError);
           displayErrorToast(message || t(I18nKey.ERROR$GENERIC));
         },
-        onSuccess: () => {
+        onSuccess: async () => {
           displaySuccessToast(t(I18nKey.SETTINGS$SAVED));
           setIsDirty(false);
+
+          // Snapshot the just-saved ACP settings as a named profile.
+          // Omitting ``profile``/``llm`` lets the backend capture the full
+          // config (including the stored api_key) without the frontend
+          // having to reconstruct it.
+          const name = acpProfileName.trim();
+          if (isAcp && name) {
+            try {
+              await saveProfile.mutateAsync({
+                name,
+                request: { include_secrets: true },
+              });
+              await activateProfile.mutateAsync(name);
+            } catch {
+              // Best-effort: ACP settings already saved. Profile errors are
+              // surfaced separately on the Profiles page.
+            }
+            setAcpProfileName("");
+          }
         },
       },
     );
@@ -341,7 +367,13 @@ export default function AgentSettingsScreen() {
                 {t(I18nKey.SETTINGS$AGENT_MODEL_HINT)}
               </Typography.Text>
             </div>
-          </>
+          <ProfileNameInput
+            testId="acp-profile-name-input"
+            value={acpProfileName}
+            onChange={setAcpProfileName}
+            isOptional
+          />
+        </>
         )}
       </div>
 

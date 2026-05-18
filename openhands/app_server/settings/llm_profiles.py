@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from pydantic import (
     BaseModel,
@@ -16,6 +16,7 @@ from pydantic import (
 
 from openhands.app_server.utils.logger import openhands_logger as logger
 from openhands.sdk.llm import LLM
+from openhands.sdk.settings.model import ACPServerKind
 
 
 def has_real_api_key(api_key: Any) -> bool:
@@ -64,6 +65,81 @@ class ProfileAlreadyExistsError(ValueError):
         super().__init__(f"Profile '{name}' already exists")
 
 
+class AgentProfile(BaseModel):
+    """A saved agent configuration — either an OpenHands LLM agent or an ACP agent.
+
+    ``extra='ignore'`` makes this backward-compatible with the legacy stored
+    format where profiles were serialised as full ``LLM`` model dumps.  Fields
+    that exist on ``LLM`` but not here (e.g. ``temperature``, ``num_retries``)
+    are silently dropped on load; the three identity fields that matter
+    (``model``, ``api_key``, ``base_url``) map directly.
+
+    Invariants:
+    - When ``agent_kind='acp'``, ``acp_server`` must be set.
+    - When ``agent_kind='openhands'``, ``acp_server`` and ``acp_model`` are ``None``.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Discriminator — absent in legacy LLM-shaped data → defaults to "openhands".
+    agent_kind: Literal['openhands', 'acp'] = 'openhands'
+
+    # Shared credential fields.  For OpenHands agents these go directly into
+    # the LLM; for ACP agents they are translated to provider-specific env vars
+    # via ACPAgentSettings.resolve_provider_env().
+    api_key: SecretStr | None = None
+    base_url: str | None = None
+
+    # OpenHands-specific: the LLM model identifier.
+    model: str = ''
+
+    # ACP-specific fields.
+    acp_server: ACPServerKind | None = None
+    acp_model: str | None = None
+
+    @model_validator(mode='after')
+    def _validate_acp_fields(self) -> AgentProfile:
+        if self.agent_kind == 'acp' and self.acp_server is None:
+            raise ValueError("acp_server is required when agent_kind='acp'")
+        return self
+
+    @field_serializer('api_key', when_used='always')
+    def _serialize_api_key(self, value: SecretStr | None, info: SerializationInfo) -> Any:
+        if value is None:
+            return None
+        context = info.context or {}
+        expose = context.get('expose_secrets', False)
+        if expose == 'plaintext' or expose is True:
+            return value.get_secret_value()
+        if expose == 'encrypted':
+            cipher = context.get('cipher')
+            if cipher is not None:
+                return cipher.encrypt(value.get_secret_value())
+        # Default: mask (same convention as LLM serialization)
+        return str(value)
+
+    @classmethod
+    def from_llm(cls, llm: LLM) -> AgentProfile:
+        """Build an OpenHands profile from a live LLM instance."""
+        return cls(
+            agent_kind='openhands',
+            model=llm.model,
+            api_key=llm.api_key,
+            base_url=llm.base_url,
+        )
+
+    @classmethod
+    def from_acp_settings(cls, settings: Any) -> AgentProfile:
+        """Build an ACP profile from a live ACPAgentSettings instance."""
+        return cls(
+            agent_kind='acp',
+            acp_server=settings.acp_server,
+            acp_model=settings.acp_model,
+            api_key=settings.llm.api_key,
+            base_url=settings.llm.base_url,
+        )
+
+
 class StrictLLM(LLM):
     """LLM variant that rejects unknown fields.
 
@@ -76,22 +152,34 @@ class StrictLLM(LLM):
     model_config = ConfigDict(extra='forbid')
 
 
-class LLMProfiles(BaseModel):
-    """Container for saved LLM configurations.
+class StrictAgentProfile(AgentProfile):
+    """AgentProfile variant that rejects unknown fields for API input validation."""
 
-    Stores a named collection of ``LLM`` configurations plus the name of the
-    currently active one (if any). All profile-management logic lives here;
-    ``Settings`` holds a single ``LLMProfiles`` instance and delegates to it.
+    model_config = ConfigDict(extra='forbid')
+
+
+class LLMProfiles(BaseModel):
+    """Container for saved agent configurations.
+
+    Stores a named collection of :class:`AgentProfile` instances (OpenHands
+    LLM configs or ACP configs) plus the name of the currently active one.
+    All profile-management logic lives here; ``Settings`` holds a single
+    ``LLMProfiles`` instance and delegates to it.
 
     Invariants (enforced on validate + assignment):
     - ``active`` is either ``None`` or a key of ``profiles``.
     - Individual profiles that fail to parse (schema drift) are dropped with
       a warning rather than failing the whole ``Settings`` load.
+
+    Backward compatibility: profiles stored before this change were serialised
+    as full ``LLM`` model dumps.  :class:`AgentProfile` uses ``extra='ignore'``
+    and defaults ``agent_kind`` to ``'openhands'``, so old payloads load
+    unchanged — extra LLM-only fields are silently dropped.
     """
 
     model_config = ConfigDict(validate_assignment=True)
 
-    profiles: dict[str, LLM] = Field(default_factory=dict)
+    profiles: dict[str, AgentProfile] = Field(default_factory=dict)
     active: str | None = None
 
     # ── Validation ─────────────────────────────────────────────────
@@ -102,20 +190,20 @@ class LLMProfiles(BaseModel):
         """Best-effort per-profile load: skip entries that fail to validate.
 
         Guards against schema drift — if a single stored profile becomes
-        invalid after an LLM-model upgrade, the user's other profiles and
-        the rest of their settings still load.
+        invalid after an upgrade, the user's other profiles and the rest of
+        their settings still load.
         """
         if not isinstance(value, dict):
             return value
         valid: dict[str, Any] = {}
         for name, raw in value.items():
-            if isinstance(raw, LLM):
+            if isinstance(raw, AgentProfile):
                 valid[name] = raw
                 continue
             try:
-                valid[name] = LLM.model_validate(raw)
+                valid[name] = AgentProfile.model_validate(raw)
             except ValidationError as exc:
-                logger.warning('Skipping invalid LLM profile %r: %s', name, exc)
+                logger.warning('Skipping invalid agent profile %r: %s', name, exc)
         return valid
 
     @model_validator(mode='after')
@@ -127,22 +215,22 @@ class LLMProfiles(BaseModel):
 
     # ── Queries ────────────────────────────────────────────────────
 
-    def get(self, name: str) -> LLM | None:
-        """Return the profile's LLM or ``None`` if it doesn't exist."""
+    def get(self, name: str) -> AgentProfile | None:
+        """Return the named profile or ``None`` if it doesn't exist."""
         return self.profiles.get(name)
 
-    def require(self, name: str) -> LLM:
-        """Return the profile's LLM or raise :class:`ProfileNotFoundError`."""
-        llm = self.profiles.get(name)
-        if llm is None:
+    def require(self, name: str) -> AgentProfile:
+        """Return the named profile or raise :class:`ProfileNotFoundError`."""
+        profile = self.profiles.get(name)
+        if profile is None:
             raise ProfileNotFoundError(name)
-        return llm
+        return profile
 
     def has(self, name: str) -> bool:
         return name in self.profiles
 
     def summaries(self) -> list[dict[str, Any]]:
-        """Return a ``{name, model, base_url, api_key_set}`` dict per profile.
+        """Return a summary dict per profile for the list endpoint.
 
         ``api_key_set`` mirrors the ``llm_api_key_set`` convention the main
         settings endpoint already uses, so the frontend can render
@@ -151,32 +239,46 @@ class LLMProfiles(BaseModel):
         return [
             {
                 'name': name,
-                'model': llm.model,
-                'base_url': llm.base_url,
-                'api_key_set': has_real_api_key(llm.api_key),
+                'agent_kind': p.agent_kind,
+                'model': p.model or None,
+                'acp_server': p.acp_server,
+                'acp_model': p.acp_model,
+                'base_url': p.base_url,
+                'api_key_set': has_real_api_key(p.api_key),
             }
-            for name, llm in self.profiles.items()
+            for name, p in self.profiles.items()
         ]
 
     # ── Mutations ──────────────────────────────────────────────────
 
-    def save(self, name: str, llm: LLM, include_secrets: bool = True) -> None:
-        """Save ``llm`` under ``name``. Overwrites if the name exists.
+    def save(
+        self,
+        name: str,
+        profile: AgentProfile | LLM,
+        include_secrets: bool = True,
+    ) -> None:
+        """Save ``profile`` under ``name``. Overwrites if the name exists.
+
+        Accepts either an :class:`AgentProfile` or a legacy :class:`LLM`
+        instance (auto-converted to an OpenHands profile) for backward
+        compatibility with existing callers.
 
         Always stores a copy so later caller-side mutations do not bleed into
         the stored profile. Raises :class:`ProfileLimitExceededError` if
         saving a *new* profile would push the count past
         :data:`MAX_PROFILES_PER_USER`.
         """
+        if isinstance(profile, LLM):
+            profile = AgentProfile.from_llm(profile)
+
         if name not in self.profiles and len(self.profiles) >= MAX_PROFILES_PER_USER:
             raise ProfileLimitExceededError(MAX_PROFILES_PER_USER)
 
         update = {} if include_secrets else {'api_key': None}
-        self.profiles[name] = llm.model_copy(update=update)
+        self.profiles[name] = profile.model_copy(update=update)
 
     def rename(self, old_name: str, new_name: str) -> None:
-        """Rename a profile, preserving stored LLM config, insertion order, and
-        the active flag (if the renamed profile was active).
+        """Rename a profile, preserving config, insertion order, and the active flag.
 
         Raises :class:`ProfileNotFoundError` if ``old_name`` doesn't exist,
         or :class:`ProfileAlreadyExistsError` if ``new_name`` is already taken
@@ -197,9 +299,9 @@ class LLMProfiles(BaseModel):
 
         # Rebuild to preserve insertion order — the renamed profile keeps
         # the slot of the old one rather than moving to the end.
-        renamed: dict[str, LLM] = {
-            (new_name if key == old_name else key): llm
-            for key, llm in self.profiles.items()
+        renamed: dict[str, AgentProfile] = {
+            (new_name if key == old_name else key): p
+            for key, p in self.profiles.items()
         }
         self.profiles = renamed
         if was_active:
@@ -225,10 +327,10 @@ class LLMProfiles(BaseModel):
     @field_serializer('profiles')
     def _profiles_serializer(
         self,
-        profiles: dict[str, LLM],
+        profiles: dict[str, AgentProfile],
         info: SerializationInfo,
     ) -> dict[str, Any]:
         return {
-            name: llm.model_dump(mode='json', context=info.context)
-            for name, llm in profiles.items()
+            name: p.model_dump(mode='json', context=info.context)
+            for name, p in profiles.items()
         }
