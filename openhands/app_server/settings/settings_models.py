@@ -356,11 +356,15 @@ class Settings(BaseModel):
         profile = self.llm_profiles.require(name)
 
         if profile.agent_kind == 'openhands':
-            llm = LLM(model=profile.model, api_key=profile.api_key, base_url=profile.base_url)
+            llm = LLM(
+                model=profile.model, api_key=profile.api_key, base_url=profile.base_url
+            )
             if isinstance(self.agent_settings, ACPAgentSettings):
                 self.agent_settings = OpenHandsAgentSettings(llm=llm)
             else:
-                self.agent_settings = self.agent_settings.model_copy(update={'llm': llm})
+                self.agent_settings = self.agent_settings.model_copy(
+                    update={'llm': llm}
+                )
         else:
             attribution_llm = LLM(
                 model=profile.acp_model or 'acp-managed',
@@ -368,11 +372,13 @@ class Settings(BaseModel):
                 base_url=profile.base_url,
             )
             if isinstance(self.agent_settings, ACPAgentSettings):
-                self.agent_settings = self.agent_settings.model_copy(update={
-                    'acp_server': profile.acp_server,
-                    'acp_model': profile.acp_model,
-                    'llm': attribution_llm,
-                })
+                self.agent_settings = self.agent_settings.model_copy(
+                    update={
+                        'acp_server': profile.acp_server,
+                        'acp_model': profile.acp_model,
+                        'llm': attribution_llm,
+                    }
+                )
             else:
                 self.agent_settings = ACPAgentSettings(
                     acp_server=profile.acp_server,

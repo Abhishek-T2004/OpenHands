@@ -385,12 +385,16 @@ async def start_app_conversation(
                     ctx = await resolve_analytics_context(user_id)
                     analytics.track_conversation_created(
                         ctx=ctx,
-                        conversation_id=str(result.app_conversation_id)
-                        if result.app_conversation_id
-                        else result.id,
-                        trigger=start_request.trigger.value
-                        if start_request.trigger
-                        else None,
+                        conversation_id=(
+                            str(result.app_conversation_id)
+                            if result.app_conversation_id
+                            else result.id
+                        ),
+                        trigger=(
+                            start_request.trigger.value
+                            if start_request.trigger
+                            else None
+                        ),
                         llm_model=None,  # Not available at start time
                         agent_type='default',
                         has_repository=start_request.selected_repository is not None,
@@ -620,12 +624,31 @@ async def switch_conversation_profile(
             detail='Settings not found',
         )
 
-    profile_llm = user_settings.llm_profiles.get(request.profile_name)
-    if profile_llm is None:
+    profile = user_settings.llm_profiles.get(request.profile_name)
+    if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Profile '{request.profile_name}' not found",
         )
+
+    if profile.agent_kind == 'acp':
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Profile '{request.profile_name}' is an ACP profile and cannot "
+                "be applied mid-conversation via switch_llm."
+            ),
+        )
+
+    # Convert to LLM so the downstream switch_llm logic (fingerprinting,
+    # payload serialisation, usage_id stamping) works unchanged.
+    from openhands.sdk.llm import LLM
+
+    profile_llm = LLM(
+        model=profile.model,
+        api_key=profile.api_key,
+        base_url=profile.base_url,
+    )
 
     # Mirror the activate_profile fixup so a profile with an empty base_url
     # picks up the provider default (e.g. the OpenHands LiteLLM proxy).
@@ -1262,9 +1285,11 @@ async def get_conversation_hooks(
                     for matcher in matchers:
                         hook_defs = [
                             HookDefinitionResponse(
-                                type=hook.type.value
-                                if hasattr(hook.type, 'value')
-                                else str(hook.type),
+                                type=(
+                                    hook.type.value
+                                    if hasattr(hook.type, 'value')
+                                    else str(hook.type)
+                                ),
                                 command=hook.command,
                                 timeout=hook.timeout,
                                 async_=hook.async_,
@@ -1335,9 +1360,12 @@ async def export_conversation(
                 user_info = await user_context.get_user_info()
                 ctx = AnalyticsContext(
                     user_id=user_id,
-                    consented=user_info.user_consents_to_analytics
-                    if user_info and user_info.user_consents_to_analytics is not None
-                    else False,
+                    consented=(
+                        user_info.user_consents_to_analytics
+                        if user_info
+                        and user_info.user_consents_to_analytics is not None
+                        else False
+                    ),
                     org_id=None,
                     user=None,
                 )

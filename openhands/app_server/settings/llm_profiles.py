@@ -110,7 +110,9 @@ class AgentProfile(BaseModel):
         return self
 
     @field_serializer('api_key', when_used='always')
-    def _serialize_api_key(self, value: SecretStr | None, info: SerializationInfo) -> Any:
+    def _serialize_api_key(
+        self, value: SecretStr | None, info: SerializationInfo
+    ) -> Any:
         if value is None:
             return None
         context = info.context or {}
@@ -144,7 +146,6 @@ class AgentProfile(BaseModel):
             api_key=settings.llm.api_key,
             base_url=settings.llm.base_url,
         )
-
 
 
 class StrictLLM(LLM):
@@ -206,6 +207,11 @@ class LLMProfiles(BaseModel):
         for name, raw in value.items():
             if isinstance(raw, AgentProfile):
                 valid[name] = raw
+                continue
+            # Legacy: profiles stored as full LLM instances (e.g. in tests or
+            # old in-memory fixtures that bypass save()).
+            if isinstance(raw, LLM):
+                valid[name] = AgentProfile.from_llm(raw)
                 continue
             try:
                 valid[name] = AgentProfile.model_validate(raw)

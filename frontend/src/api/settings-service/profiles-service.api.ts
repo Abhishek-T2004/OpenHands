@@ -4,10 +4,11 @@ export type AgentKind = "openhands" | "acp";
 
 export interface LlmProfileSummary {
   name: string;
-  agent_kind: AgentKind;
+  /** Defaults to "openhands" when absent (legacy profiles). */
+  agent_kind?: AgentKind;
   model: string | null;
-  acp_server: string | null;
-  acp_model: string | null;
+  acp_server?: string | null;
+  acp_model?: string | null;
   base_url: string | null;
   api_key_set: boolean;
 }
