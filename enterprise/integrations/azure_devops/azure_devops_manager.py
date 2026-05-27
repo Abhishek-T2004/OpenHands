@@ -39,16 +39,16 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
     def __init__(self, token_manager: TokenManager, data_collector: None = None):
         self.token_manager = token_manager
         self.jinja_env = Environment(
-            loader=FileSystemLoader(OPENHANDS_RESOLVER_TEMPLATES_DIR + 'azure_devops')
+            loader=FileSystemLoader(OPENHANDS_RESOLVER_TEMPLATES_DIR + "azure_devops")
         )
 
     def _confirm_incoming_source_type(self, message: Message) -> None:
         if message.source != SourceType.AZURE_DEVOPS:
-            raise ValueError(f'Unexpected message source {message.source}')
+            raise ValueError(f"Unexpected message source {message.source}")
 
     async def _resolve_mentioner_keycloak_id(self, message: Message) -> str | None:
         actor = AzureDevOpsFactory.extract_actor(message)
-        actor_id = str(actor.get('id') or '')
+        actor_id = str(actor.get("id") or "")
         if actor_id:
             try:
                 keycloak_id = await self.token_manager.get_user_id_from_idp_user_id(
@@ -58,19 +58,17 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
                     return keycloak_id
             except Exception as e:
                 logger.info(
-                    f'[Azure DevOps] Keycloak id lookup failed for actor {actor_id}: {e}'
+                    f"[Azure DevOps] Keycloak id lookup failed for actor {actor_id}: {e}"
                 )
 
         email = actor_email(actor)
         if email:
             try:
-                return await self.token_manager.get_user_id_from_user_email(
-                    email
-                )
+                return await self.token_manager.get_user_id_from_user_email(email)
             except Exception as e:
                 logger.info(
-                    f'[Azure DevOps] Keycloak email lookup failed for actor '
-                    f'{email}: {e}'
+                    f"[Azure DevOps] Keycloak email lookup failed for actor "
+                    f"{email}: {e}"
                 )
 
         return None
@@ -90,8 +88,8 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
         actor = AzureDevOpsFactory.extract_actor(message)
         if not keycloak_user_id:
             logger.info(
-                f'[Azure DevOps] Mentioner {actor.get("displayName") or actor.get("uniqueName") or "unknown"} '
-                'has no OpenHands account; ignoring event.'
+                f"[Azure DevOps] Mentioner {actor.get('displayName') or actor.get('uniqueName') or 'unknown'} "
+                "has no OpenHands account; ignoring event."
             )
             return
 
@@ -100,8 +98,8 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
             keycloak_user_id=keycloak_user_id,
         )
         logger.info(
-            f'[Azure DevOps] Creating job for {azure_view.user_info.username} '
-            f'in {azure_view.full_repo_name}#{azure_view.issue_number}'
+            f"[Azure DevOps] Creating job for {azure_view.user_info.username} "
+            f"in {azure_view.full_repo_name}#{azure_view.issue_number}"
         )
         await self.start_job(azure_view)
 
@@ -138,22 +136,22 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
             try:
                 user_info = azure_view.user_info
                 logger.info(
-                    f'[Azure DevOps] Starting job for {user_info.username} '
-                    f'in {azure_view.full_repo_name}#{azure_view.issue_number}'
+                    f"[Azure DevOps] Starting job for {user_info.username} "
+                    f"in {azure_view.full_repo_name}#{azure_view.issue_number}"
                 )
 
                 offline_token = await self.token_manager.load_offline_token(
                     user_info.keycloak_user_id
                 )
                 if not offline_token:
-                    raise MissingSettingsError('Missing settings')
+                    raise MissingSettingsError("Missing settings")
 
                 user_token = await self.token_manager.get_idp_token_from_offline_token(
                     offline_token,
                     ProviderType.AZURE_DEVOPS,
                 )
                 if not user_token:
-                    raise MissingSettingsError('Missing settings')
+                    raise MissingSettingsError("Missing settings")
 
                 secret_store = Secrets(
                     provider_tokens=MappingProxyType(
@@ -177,43 +175,41 @@ class AzureDevOpsManager(Manager[AzureDevOpsViewType]):
                     conversation_id,
                     saas_user_auth,
                 )
-                conversation_link = CONVERSATION_URL.format(
-                    azure_view.conversation_id
-                )
+                conversation_link = CONVERSATION_URL.format(azure_view.conversation_id)
                 msg_info = (
                     f"I'm on it! {user_info.username} can [track my progress at "
-                    f'all-hands.dev]({conversation_link})'
+                    f"all-hands.dev]({conversation_link})"
                 )
             except MissingSettingsError as e:
                 logger.warning(
-                    f'[Azure DevOps] Missing settings for '
-                    f'{azure_view.user_info.username}: {e}'
+                    f"[Azure DevOps] Missing settings for "
+                    f"{azure_view.user_info.username}: {e}"
                 )
                 msg_info = (
-                    f'@{azure_view.user_info.username} please re-login into '
-                    f'[OpenHands Cloud]({HOST_URL}) before starting a job.'
+                    f"@{azure_view.user_info.username} please re-login into "
+                    f"[OpenHands Cloud]({HOST_URL}) before starting a job."
                 )
             except LLMAuthenticationError as e:
                 logger.warning(
-                    f'[Azure DevOps] LLM authentication error for '
-                    f'{azure_view.user_info.username}: {e}'
+                    f"[Azure DevOps] LLM authentication error for "
+                    f"{azure_view.user_info.username}: {e}"
                 )
                 msg_info = (
-                    f'@{azure_view.user_info.username} please set a valid LLM API key '
-                    f'in [OpenHands Cloud]({HOST_URL}) before starting a job.'
+                    f"@{azure_view.user_info.username} please set a valid LLM API key "
+                    f"in [OpenHands Cloud]({HOST_URL}) before starting a job."
                 )
             except SessionExpiredError as e:
                 logger.warning(
-                    f'[Azure DevOps] Session expired for '
-                    f'{azure_view.user_info.username}: {e}'
+                    f"[Azure DevOps] Session expired for "
+                    f"{azure_view.user_info.username}: {e}"
                 )
                 msg_info = get_session_expired_message(azure_view.user_info.username)
 
             await self.send_message(msg_info, azure_view)
 
         except Exception as e:
-            logger.exception(f'[Azure DevOps] Error starting job: {e}')
+            logger.exception(f"[Azure DevOps] Error starting job: {e}")
             await self.send_message(
-                'Uh oh! There was an unexpected error starting the job :(',
+                "Uh oh! There was an unexpected error starting the job :(",
                 azure_view,
             )

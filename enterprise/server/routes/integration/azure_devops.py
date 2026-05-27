@@ -14,7 +14,7 @@ from storage.redis import get_redis_client_async
 
 from openhands.app_server.utils.logger import openhands_logger as logger
 
-azure_devops_integration_router = APIRouter(prefix='/integration')
+azure_devops_integration_router = APIRouter(prefix="/integration")
 
 _azure_devops_manager = None
 
@@ -32,14 +32,14 @@ def get_azure_devops_manager():
 def _basic_auth_secret(authorization: str | None) -> str | None:
     if not authorization:
         return None
-    scheme, _, encoded = authorization.partition(' ')
-    if scheme.lower() != 'basic' or not encoded:
+    scheme, _, encoded = authorization.partition(" ")
+    if scheme.lower() != "basic" or not encoded:
         return None
     try:
         decoded = base64.b64decode(encoded).decode()
     except Exception:
         return None
-    _, _, password = decoded.partition(':')
+    _, _, password = decoded.partition(":")
     return password or decoded
 
 
@@ -48,7 +48,7 @@ async def verify_azure_devops_signature(
     authorization: str | None,
 ) -> None:
     expected_secret = (
-        'localdeploymentwebhooktesttoken'
+        "localdeploymentwebhooktesttoken"
         if IS_LOCAL_DEPLOYMENT
         else AZURE_DEVOPS_WEBHOOK_SECRET
     )
@@ -56,7 +56,7 @@ async def verify_azure_devops_signature(
     if not expected_secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail='Azure DevOps webhook secret is not configured.',
+            detail="Azure DevOps webhook secret is not configured.",
         )
     if not provided_secret or not secrets.compare_digest(
         provided_secret, expected_secret
@@ -64,7 +64,7 @@ async def verify_azure_devops_signature(
         raise HTTPException(status_code=403, detail="Request signatures didn't match!")
 
 
-@azure_devops_integration_router.post('/azure-devops/events')
+@azure_devops_integration_router.post("/azure-devops/events")
 async def azure_devops_events(
     request: Request,
     x_openhands_webhook_secret: str | None = Header(None),
@@ -77,41 +77,39 @@ async def azure_devops_events(
         )
 
         payload_data = await request.json()
-        dedup_key = payload_data.get('id')
-        notification_id = payload_data.get('notificationId')
+        dedup_key = payload_data.get("id")
+        notification_id = payload_data.get("notificationId")
         if dedup_key:
-            dedup_key = f'azure_devops_msg:{dedup_key}:{notification_id or ""}'
+            dedup_key = f"azure_devops_msg:{dedup_key}:{notification_id or ''}"
         else:
             dedup_json = json.dumps(payload_data, sort_keys=True)
             dedup_hash = hashlib.sha256(dedup_json.encode()).hexdigest()
-            dedup_key = f'azure_devops_msg:{dedup_hash}'
+            dedup_key = f"azure_devops_msg:{dedup_hash}"
 
         redis = get_redis_client_async()
         created = await redis.set(dedup_key, 1, nx=True, ex=60)
         if not created:
-            logger.info('azure_devops_is_duplicate')
+            logger.info("azure_devops_is_duplicate")
             return JSONResponse(
                 status_code=200,
-                content={'message': 'Duplicate Azure DevOps event ignored.'},
+                content={"message": "Duplicate Azure DevOps event ignored."},
             )
 
         message = Message(
             source=SourceType.AZURE_DEVOPS,
             message={
-                'payload': payload_data,
-                'event_key': payload_data.get('eventType'),
+                "payload": payload_data,
+                "event_key": payload_data.get("eventType"),
             },
         )
         await get_azure_devops_manager().receive_message(message)
 
         return JSONResponse(
             status_code=200,
-            content={
-                'message': 'Azure DevOps events endpoint reached successfully.'
-            },
+            content={"message": "Azure DevOps events endpoint reached successfully."},
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f'Error processing Azure DevOps event: {e}')
-        return JSONResponse(status_code=400, content={'error': 'Invalid payload.'})
+        logger.exception(f"Error processing Azure DevOps event: {e}")
+        return JSONResponse(status_code=400, content={"error": "Invalid payload."})

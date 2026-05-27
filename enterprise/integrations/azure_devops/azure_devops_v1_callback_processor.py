@@ -30,7 +30,7 @@ _logger = logging.getLogger(__name__)
 
 
 class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
-    event_kind: ClassVar[EventKind] = 'ConversationStateUpdateEvent'
+    event_kind: ClassVar[EventKind] = "ConversationStateUpdateEvent"
 
     azure_devops_view_data: dict[str, Any] = Field(default_factory=dict)
     should_request_summary: bool = Field(default=True)
@@ -43,12 +43,12 @@ class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
     ) -> EventCallbackResult | None:
         if not isinstance(event, ConversationStateUpdateEvent):
             return None
-        if event.key != 'execution_status':
+        if event.key != "execution_status":
             return None
 
-        _logger.info('[Azure DevOps V1] Callback agent state was %s', event)
+        _logger.info("[Azure DevOps V1] Callback agent state was %s", event)
 
-        if event.value != 'finished':
+        if event.value != "finished":
             return None
         if not self.should_request_summary:
             return None
@@ -65,11 +65,11 @@ class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
                 detail=summary,
             )
         except Exception as e:
-            can_post_error = bool(self.azure_devops_view_data.get('keycloak_user_id'))
+            can_post_error = bool(self.azure_devops_view_data.get("keycloak_user_id"))
             await handle_callback_error(
                 error=e,
                 conversation_id=conversation_id,
-                service_name='Azure DevOps',
+                service_name="Azure DevOps",
                 service_logger=_logger,
                 can_post_error=can_post_error,
                 post_error_func=self._post_summary_to_azure_devops,
@@ -87,15 +87,15 @@ class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
             AzureDevOpsServiceImpl,
         )
 
-        keycloak_user_id = self.azure_devops_view_data.get('keycloak_user_id')
+        keycloak_user_id = self.azure_devops_view_data.get("keycloak_user_id")
         if not keycloak_user_id:
-            raise RuntimeError('Missing keycloak user ID for Azure DevOps')
+            raise RuntimeError("Missing keycloak user ID for Azure DevOps")
 
         azure_service = AzureDevOpsServiceImpl(external_auth_id=keycloak_user_id)
-        repository = self.azure_devops_view_data['repository']
-        issue_number = int(self.azure_devops_view_data['issue_number'])
-        if self.azure_devops_view_data.get('is_pr'):
-            thread_id = self.azure_devops_view_data.get('thread_id')
+        repository = self.azure_devops_view_data["repository"]
+        issue_number = int(self.azure_devops_view_data["issue_number"])
+        if self.azure_devops_view_data.get("is_pr"):
+            thread_id = self.azure_devops_view_data.get("thread_id")
             if thread_id:
                 await azure_service.add_pr_comment_to_thread(
                     repository,
@@ -123,9 +123,9 @@ class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
         send_message_request = AskAgentRequest(question=message_content)
         url = (
             f"{agent_server_url.rstrip('/')}"
-            f'/api/conversations/{conversation_id}/ask_agent'
+            f"/api/conversations/{conversation_id}/ask_agent"
         )
-        headers = {'X-Session-API-Key': session_api_key}
+        headers = {"X-Session-API-Key": session_api_key}
         payload = send_message_request.model_dump()
 
         try:
@@ -135,20 +135,20 @@ class AzureDevOpsV1CallbackProcessor(EventCallbackProcessor):
             response.raise_for_status()
             return AskAgentResponse.model_validate(response.json()).response
         except httpx.HTTPStatusError as e:
-            error_detail = f'HTTP {e.response.status_code} error'
+            error_detail = f"HTTP {e.response.status_code} error"
             try:
                 if e.response.text:
-                    error_detail += f': {e.response.text}'
+                    error_detail += f": {e.response.text}"
             except Exception:
                 pass
             _logger.error(
-                '[Azure DevOps V1] HTTP error: %s', error_detail, exc_info=True
+                "[Azure DevOps V1] HTTP error: %s", error_detail, exc_info=True
             )
-            raise Exception(f'Failed to send message to agent server: {error_detail}')
+            raise Exception(f"Failed to send message to agent server: {error_detail}")
         except httpx.TimeoutException:
-            raise Exception(f'Request timeout after 30 seconds to {url}')
+            raise Exception(f"Request timeout after 30 seconds to {url}")
         except httpx.RequestError as e:
-            raise Exception(f'Request error to {url}: {e}')
+            raise Exception(f"Request error to {url}: {e}")
 
     async def _request_summary(self, conversation_id: UUID) -> str:
         from openhands.app_server.config import (

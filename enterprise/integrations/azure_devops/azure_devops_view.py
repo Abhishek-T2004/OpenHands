@@ -33,86 +33,86 @@ from openhands.sdk import TextContent
 
 OH_LABEL, INLINE_OH_LABEL = get_oh_labels(HOST)
 
-PR_COMMENT_EVENT = 'ms.vss-code.git-pullrequest-comment-event'
-WORK_ITEM_COMMENT_EVENT = 'workitem.commented'
+PR_COMMENT_EVENT = "ms.vss-code.git-pullrequest-comment-event"
+WORK_ITEM_COMMENT_EVENT = "workitem.commented"
 
 
 def _strip_ref_prefix(ref_name: str | None) -> str | None:
     if not ref_name:
         return None
-    return ref_name.removeprefix('refs/heads/')
+    return ref_name.removeprefix("refs/heads/")
 
 
 def _extract_org_from_url(raw_url: str | None) -> str:
     if not raw_url:
-        return ''
+        return ""
 
     parsed = urlparse(raw_url)
-    hostname = parsed.hostname or ''
-    path_parts = [part for part in parsed.path.split('/') if part]
+    hostname = parsed.hostname or ""
+    path_parts = [part for part in parsed.path.split("/") if part]
 
-    if hostname.endswith('dev.azure.com') and path_parts:
+    if hostname.endswith("dev.azure.com") and path_parts:
         return path_parts[0]
 
-    if hostname.endswith('.visualstudio.com'):
-        return hostname.split('.')[0]
+    if hostname.endswith(".visualstudio.com"):
+        return hostname.split(".")[0]
 
-    return ''
+    return ""
 
 
 def _extract_org(payload: dict[str, Any]) -> str:
-    resource_containers = payload.get('resourceContainers') or {}
-    for container_name in ('account', 'collection', 'project'):
+    resource_containers = payload.get("resourceContainers") or {}
+    for container_name in ("account", "collection", "project"):
         org = _extract_org_from_url(
-            (resource_containers.get(container_name) or {}).get('baseUrl')
+            (resource_containers.get(container_name) or {}).get("baseUrl")
         )
         if org:
             return org
 
-    resource = payload.get('resource') or {}
+    resource = payload.get("resource") or {}
     for candidate in (
-        ((resource.get('pullRequest') or {}).get('repository') or {}).get('remoteUrl'),
-        ((resource.get('pullRequest') or {}).get('repository') or {}).get('url'),
-        ((resource.get('comment') or {}).get('_links') or {})
-        .get('self', {})
-        .get('href'),
-        ((resource.get('_links') or {}).get('self') or {}).get('href'),
-        resource.get('url'),
+        ((resource.get("pullRequest") or {}).get("repository") or {}).get("remoteUrl"),
+        ((resource.get("pullRequest") or {}).get("repository") or {}).get("url"),
+        ((resource.get("comment") or {}).get("_links") or {})
+        .get("self", {})
+        .get("href"),
+        ((resource.get("_links") or {}).get("self") or {}).get("href"),
+        resource.get("url"),
     ):
         org = _extract_org_from_url(candidate)
         if org:
             return org
 
-    return ''
+    return ""
 
 
 def _extract_work_item_comment(payload: dict[str, Any]) -> str:
-    fields = (payload.get('resource') or {}).get('fields') or {}
-    history = fields.get('System.History') or ''
+    fields = (payload.get("resource") or {}).get("fields") or {}
+    history = fields.get("System.History") or ""
     if history:
         return history
 
-    detailed = (payload.get('detailedMessage') or {}).get('text') or ''
-    match = re.search(r'\r?\n([^\r\n].*)\Z', detailed, flags=re.S)
+    detailed = (payload.get("detailedMessage") or {}).get("text") or ""
+    match = re.search(r"\r?\n([^\r\n].*)\Z", detailed, flags=re.S)
     return match.group(1).strip() if match else detailed
 
 
 def _actor_username(actor: dict[str, Any]) -> str:
     return (
-        actor.get('displayName')
-        or actor.get('uniqueName')
-        or actor.get('id')
-        or 'unknown'
+        actor.get("displayName")
+        or actor.get("uniqueName")
+        or actor.get("id")
+        or "unknown"
     )
 
 
 def actor_email(actor: dict[str, Any]) -> str:
-    unique_name = str(actor.get('uniqueName') or '').strip()
-    if '@' in unique_name:
+    unique_name = str(actor.get("uniqueName") or "").strip()
+    if "@" in unique_name:
         return unique_name
-    display_name = str(actor.get('displayName') or '').strip()
-    match = re.search(r'[\w.+-]+@[\w.-]+\.\w+', display_name)
-    return match.group(0) if match else ''
+    display_name = str(actor.get("displayName") or "").strip()
+    match = re.search(r"[\w.+-]+@[\w.-]+\.\w+", display_name)
+    return match.group(0) if match else ""
 
 
 @dataclass
@@ -132,7 +132,7 @@ class AzureDevOpsItem(ResolverViewInterface):
     project_name: str
 
     def _get_branch_name(self) -> str | None:
-        return getattr(self, 'branch_name', None)
+        return getattr(self, "branch_name", None)
 
     async def _load_resolver_context(self) -> None:
         azure_service = AzureDevOpsServiceImpl(
@@ -143,7 +143,10 @@ class AzureDevOpsItem(ResolverViewInterface):
             self.issue_number,
             max_comments=100,
         )
-        self.title, self.description = await azure_service.get_issue_or_pr_title_and_body(
+        (
+            self.title,
+            self.description,
+        ) = await azure_service.get_issue_or_pr_title_and_body(
             self.full_repo_name,
             self.issue_number,
         )
@@ -169,7 +172,7 @@ class AzureDevOpsItem(ResolverViewInterface):
             jinja_env
         )
         initial_message = SendMessageRequest(
-            role='user', content=[TextContent(text=user_instructions)]
+            role="user", content=[TextContent(text=user_instructions)]
         )
 
         from integrations.azure_devops.azure_devops_v1_callback_processor import (
@@ -178,16 +181,20 @@ class AzureDevOpsItem(ResolverViewInterface):
 
         callback_processor = AzureDevOpsV1CallbackProcessor(
             azure_devops_view_data={
-                'repository': self.full_repo_name,
-                'issue_number': self.issue_number,
-                'keycloak_user_id': self.user_info.keycloak_user_id,
-                'is_pr': isinstance(self, AzureDevOpsPRComment),
-                'thread_id': getattr(self, 'thread_id', None),
+                "repository": self.full_repo_name,
+                "issue_number": self.issue_number,
+                "keycloak_user_id": self.user_info.keycloak_user_id,
+                "is_pr": isinstance(self, AzureDevOpsPRComment),
+                "thread_id": getattr(self, "thread_id", None),
             },
             should_request_summary=self.send_summary_instruction,
         )
 
-        title_prefix = 'Azure DevOps PR' if isinstance(self, AzureDevOpsPRComment) else 'Azure DevOps Work Item'
+        title_prefix = (
+            "Azure DevOps PR"
+            if isinstance(self, AzureDevOpsPRComment)
+            else "Azure DevOps Work Item"
+        )
         start_request = AppConversationStartRequest(
             conversation_id=conversation_id,
             system_message_suffix=conversation_instructions or None,
@@ -195,7 +202,7 @@ class AzureDevOpsItem(ResolverViewInterface):
             selected_repository=self.full_repo_name,
             selected_branch=self._get_branch_name(),
             git_provider=ProviderType.AZURE_DEVOPS,
-            title=f'{title_prefix} #{self.issue_number}: {self.title}',
+            title=f"{title_prefix} #{self.issue_number}: {self.title}",
             trigger=ConversationTrigger.RESOLVER,
             processors=[callback_processor],
         )
@@ -215,10 +222,10 @@ class AzureDevOpsItem(ResolverViewInterface):
             ):
                 if task.status == AppConversationStartTaskStatus.ERROR:
                     logger.error(
-                        f'[Azure DevOps] Failed to start V1 conversation: {task.detail}'
+                        f"[Azure DevOps] Failed to start V1 conversation: {task.detail}"
                     )
                     raise RuntimeError(
-                        f'Failed to start V1 conversation: {task.detail}'
+                        f"Failed to start V1 conversation: {task.detail}"
                     )
 
 
@@ -232,17 +239,17 @@ class AzureDevOpsPRComment(AzureDevOpsItem):
     async def _get_instructions(self, jinja_env: Environment) -> tuple[str, str]:
         await self._load_resolver_context()
 
-        user_instructions_template = jinja_env.get_template('pr_update_prompt.j2')
+        user_instructions_template = jinja_env.get_template("pr_update_prompt.j2")
         user_instructions = user_instructions_template.render(
             pr_comment=self.comment_body
         )
 
         conversation_instructions_template = jinja_env.get_template(
-            'pr_update_conversation_instructions.j2'
+            "pr_update_conversation_instructions.j2"
         )
         conversation_instructions = conversation_instructions_template.render(
             pr_number=self.issue_number,
-            branch_name=self.branch_name or '',
+            branch_name=self.branch_name or "",
             pr_title=self.title,
             pr_body=self.description,
             comments=self.previous_comments,
@@ -257,14 +264,14 @@ class AzureDevOpsWorkItemComment(AzureDevOpsItem):
     async def _get_instructions(self, jinja_env: Environment) -> tuple[str, str]:
         await self._load_resolver_context()
 
-        user_instructions_template = jinja_env.get_template('issue_prompt.j2')
+        user_instructions_template = jinja_env.get_template("issue_prompt.j2")
         user_instructions = user_instructions_template.render(
             issue_comment=self.comment_body,
             issue_number=self.issue_number,
         )
 
         conversation_instructions_template = jinja_env.get_template(
-            'issue_conversation_instructions.j2'
+            "issue_conversation_instructions.j2"
         )
         conversation_instructions = conversation_instructions_template.render(
             issue_number=self.issue_number,
@@ -282,40 +289,40 @@ class AzureDevOpsFactory:
     @staticmethod
     def event_key(message: Message) -> str:
         return str(
-            message.message.get('event_key')
-            or (message.message.get('payload') or {}).get('eventType')
-            or ''
+            message.message.get("event_key")
+            or (message.message.get("payload") or {}).get("eventType")
+            or ""
         )
 
     @staticmethod
     def extract_actor(message: Message) -> dict[str, Any]:
-        payload = message.message.get('payload') or {}
-        resource = payload.get('resource') or {}
+        payload = message.message.get("payload") or {}
+        resource = payload.get("resource") or {}
         if AzureDevOpsFactory.event_key(message) == PR_COMMENT_EVENT:
-            return (resource.get('comment') or {}).get('author') or {}
+            return (resource.get("comment") or {}).get("author") or {}
         if AzureDevOpsFactory.event_key(message) == WORK_ITEM_COMMENT_EVENT:
-            changed_by = (resource.get('fields') or {}).get('System.ChangedBy')
+            changed_by = (resource.get("fields") or {}).get("System.ChangedBy")
             if isinstance(changed_by, dict):
                 return changed_by
             if isinstance(changed_by, str):
-                return {'displayName': changed_by, 'uniqueName': changed_by}
+                return {"displayName": changed_by, "uniqueName": changed_by}
         return {}
 
     @staticmethod
     def is_pr_comment(message: Message) -> bool:
         if AzureDevOpsFactory.event_key(message) != PR_COMMENT_EVENT:
             return False
-        payload = message.message.get('payload') or {}
-        comment = ((payload.get('resource') or {}).get('comment') or {}).get(
-            'content'
-        ) or ''
+        payload = message.message.get("payload") or {}
+        comment = ((payload.get("resource") or {}).get("comment") or {}).get(
+            "content"
+        ) or ""
         return has_exact_mention(comment, INLINE_OH_LABEL)
 
     @staticmethod
     def is_work_item_comment(message: Message) -> bool:
         if AzureDevOpsFactory.event_key(message) != WORK_ITEM_COMMENT_EVENT:
             return False
-        payload = message.message.get('payload') or {}
+        payload = message.message.get("payload") or {}
         return has_exact_mention(_extract_work_item_comment(payload), INLINE_OH_LABEL)
 
     @staticmethod
@@ -323,25 +330,25 @@ class AzureDevOpsFactory:
         message: Message,
         keycloak_user_id: str,
     ) -> AzureDevOpsViewType:
-        payload = message.message.get('payload') or {}
-        resource = payload.get('resource') or {}
+        payload = message.message.get("payload") or {}
+        resource = payload.get("resource") or {}
         actor = AzureDevOpsFactory.extract_actor(message)
         username = _actor_username(actor)
-        actor_id = str(actor.get('id') or actor.get('uniqueName') or username)
+        actor_id = str(actor.get("id") or actor.get("uniqueName") or username)
         org = _extract_org(payload)
 
         if AzureDevOpsFactory.is_pr_comment(message):
-            pull_request = resource.get('pullRequest') or {}
-            repository = pull_request.get('repository') or {}
-            project_name = (repository.get('project') or {}).get('name') or ''
-            repo_name = repository.get('name') or ''
-            pr_number = int(pull_request.get('pullRequestId') or 0)
-            comment = resource.get('comment') or {}
-            thread_href = (
-                ((comment.get('_links') or {}).get('threads') or {}).get('href') or ''
-            )
-            thread_match = re.search(r'/threads/(\d+)(?:$|[/?#])', thread_href)
-            full_repo_name = f'{org}/{project_name}/{repo_name}'
+            pull_request = resource.get("pullRequest") or {}
+            repository = pull_request.get("repository") or {}
+            project_name = (repository.get("project") or {}).get("name") or ""
+            repo_name = repository.get("name") or ""
+            pr_number = int(pull_request.get("pullRequestId") or 0)
+            comment = resource.get("comment") or {}
+            thread_href = ((comment.get("_links") or {}).get("threads") or {}).get(
+                "href"
+            ) or ""
+            thread_match = re.search(r"/threads/(\d+)(?:$|[/?#])", thread_href)
+            full_repo_name = f"{org}/{project_name}/{repo_name}"
             user_info = UserData(
                 user_id=actor_id,
                 username=username,
@@ -354,24 +361,24 @@ class AzureDevOpsFactory:
                 is_public_repo=False,
                 user_info=user_info,
                 raw_payload=message,
-                conversation_id='',
+                conversation_id="",
                 should_extract=True,
                 send_summary_instruction=True,
-                title='',
-                description='',
+                title="",
+                description="",
                 previous_comments=[],
                 project_name=project_name,
-                comment_id=comment.get('id'),
-                comment_body=comment.get('content') or '',
+                comment_id=comment.get("id"),
+                comment_body=comment.get("content") or "",
                 thread_id=int(thread_match.group(1)) if thread_match else None,
-                branch_name=_strip_ref_prefix(pull_request.get('sourceRefName')),
+                branch_name=_strip_ref_prefix(pull_request.get("sourceRefName")),
             )
 
         if AzureDevOpsFactory.is_work_item_comment(message):
-            fields = resource.get('fields') or {}
-            project_name = fields.get('System.TeamProject') or ''
-            work_item_id = int(resource.get('id') or 0)
-            full_repo_name = f'{org}/{project_name}/{project_name}'
+            fields = resource.get("fields") or {}
+            project_name = fields.get("System.TeamProject") or ""
+            work_item_id = int(resource.get("id") or 0)
+            full_repo_name = f"{org}/{project_name}/{project_name}"
             user_info = UserData(
                 user_id=actor_id,
                 username=username,
@@ -384,14 +391,14 @@ class AzureDevOpsFactory:
                 is_public_repo=False,
                 user_info=user_info,
                 raw_payload=message,
-                conversation_id='',
+                conversation_id="",
                 should_extract=True,
                 send_summary_instruction=True,
-                title='',
-                description='',
+                title="",
+                description="",
                 previous_comments=[],
                 project_name=project_name,
                 comment_body=_extract_work_item_comment(payload),
             )
 
-        raise ValueError(f'Unhandled Azure DevOps webhook event: {message}')
+        raise ValueError(f"Unhandled Azure DevOps webhook event: {message}")

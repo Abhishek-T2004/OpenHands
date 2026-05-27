@@ -42,7 +42,9 @@ class AzureDevOpsResolverMixin(AzureDevOpsMixinBase):
 
         # Fall back to work item
         try:
-            wi_url = f'{project_base_url}/_apis/wit/workitems/{issue_number}?api-version=7.1'
+            wi_url = (
+                f'{project_base_url}/_apis/wit/workitems/{issue_number}?api-version=7.1'
+            )
             response, _ = await self._make_request(wi_url)
             fields = response.get('fields', {})
             title = fields.get('System.Title') or ''
