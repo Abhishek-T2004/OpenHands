@@ -15,17 +15,29 @@ export interface TopTab {
 }
 
 export const topTabs: TopTab[] = [
-  { id: 'introduction', title: 'Introduction', slug: '/' },
-  { id: 'getting-started', title: 'Getting Started', slug: '/getting-started' },
-  { id: 'installation', title: 'Installation', slug: '/installation' },
-  { id: 'products', title: 'Products', slug: '/products' },
-  { id: 'features', title: 'Features', slug: '/features' },
-  { id: 'api', title: 'API Reference', slug: '/api' },
-  { id: 'configuration', title: 'Configuration', slug: '/configuration' },
-  { id: 'integrations', title: 'Integrations', slug: '/integrations' },
-  { id: 'enterprise', title: 'Enterprise', slug: '/enterprise' },
-  { id: 'contributing', title: 'Contributing', slug: '/contributing' },
-  { id: 'changelog', title: 'Changelog', slug: '/changelog' },
+  // ── OpenHands (OSS + Cloud) ──────────────────────────────────────────────
+  { id: 'introduction',     title: 'Introduction',     slug: '/' },
+  { id: 'getting-started',  title: 'Getting Started',  slug: '/getting-started' },
+  { id: 'installation',     title: 'Installation',     slug: '/installation' },
+  { id: 'products',         title: 'Products',         slug: '/products' },
+  { id: 'features',         title: 'Features',         slug: '/features' },
+  { id: 'api',              title: 'API Reference',    slug: '/api' },
+  { id: 'configuration',    title: 'Configuration',    slug: '/configuration' },
+  { id: 'integrations',     title: 'Integrations',     slug: '/integrations' },
+  { id: 'enterprise',       title: 'Enterprise',       slug: '/enterprise' },
+  { id: 'contributing',     title: 'Contributing',     slug: '/contributing' },
+  { id: 'changelog',        title: 'Changelog',        slug: '/changelog' },
+
+  // ── Deploy Repo ──────────────────────────────────────────────────────────
+  { id: 'deploy-overview',     title: 'Deploy: Overview',     slug: '/deploy' },
+  { id: 'deploy-architecture', title: 'Deploy: Architecture', slug: '/deploy/architecture' },
+  { id: 'deploy-components',   title: 'Deploy: Components',   slug: '/deploy/components' },
+  { id: 'environments',        title: 'Environments',         slug: '/deploy/environments' },
+  { id: 'release-and-deploy',  title: 'Release & Deploy',     slug: '/deploy/release' },
+  { id: 'secrets-and-ops',     title: 'Secrets & Ops',        slug: '/deploy/secrets' },
+  { id: 'deploy-testing',      title: 'Deploy: Testing',      slug: '/deploy/testing' },
+  { id: 'cicd-reference',      title: 'CI/CD Reference',      slug: '/deploy/cicd' },
+  { id: 'deploy-dev-guide',    title: 'Deploy: Dev Guide',    slug: '/deploy/dev-guide' },
 ];
 
 export const navigationByTab: Record<string, NavItem[]> = {
@@ -422,5 +434,412 @@ export const navigationByTab: Record<string, NavItem[]> = {
   changelog: [
     { id: 'changelog-notes', title: 'Release Notes', route: '/changelog' },
     { id: 'changelog-migration', title: 'Migration Guides', route: '/changelog/migration' },
+  ],
+
+  // ── Deploy Repo ────────────────────────────────────────────────────────────
+
+  'deploy-overview': [
+    { id: 'deploy-what',       title: 'What Is This Repo?',          route: '/deploy' },
+    { id: 'deploy-structure',  title: 'Repository Structure',         route: '/deploy/structure' },
+    { id: 'deploy-license',    title: 'License (Polyform Free Trial)', route: '/deploy/license' },
+    { id: 'deploy-versioning', title: 'Versioning & Release Cadence', route: '/deploy/versioning' },
+    { id: 'deploy-envs-glance',title: 'Environments at a Glance',     route: '/deploy/environments-glance' },
+  ],
+
+  'deploy-architecture': [
+    {
+      id: 'darch-system',
+      title: 'System Architecture',
+      route: '/deploy/architecture',
+      children: [
+        { id: 'darch-diagram',  title: 'High-Level Diagram',        route: '/deploy/architecture/diagram' },
+        { id: 'darch-gcp',      title: 'GCP / Kubernetes Overview', route: '/deploy/architecture/gcp-k8s' },
+        { id: 'darch-network',  title: 'Networking & Ingress',      route: '/deploy/architecture/networking' },
+      ],
+    },
+    {
+      id: 'darch-deploy-model',
+      title: 'Deployment Model',
+      route: '/deploy/architecture/deployment-model',
+      children: [
+        { id: 'darch-flow',   title: 'Feature → Staging → Production Flow', route: '/deploy/architecture/release-flow' },
+        { id: 'darch-helm',   title: 'Helm Chart Strategy',                  route: '/deploy/architecture/helm-strategy' },
+        { id: 'darch-images', title: 'Image Tagging Convention',             route: '/deploy/architecture/image-tags' },
+      ],
+    },
+    {
+      id: 'darch-conv-mgr',
+      title: 'Clustered Conversation Manager',
+      route: '/deploy/architecture/conversation-manager',
+      children: [
+        { id: 'darch-redis',      title: 'How Redis Is Used',       route: '/deploy/architecture/conversation-manager/redis' },
+        { id: 'darch-agent-loop', title: 'Agent Loop vs. Worker Node', route: '/deploy/architecture/conversation-manager/agent-loop' },
+        { id: 'darch-failover',   title: 'Failover Behavior',       route: '/deploy/architecture/conversation-manager/failover' },
+      ],
+    },
+  ],
+
+  'deploy-components': [
+    {
+      id: 'dc-openhands',
+      title: 'OpenHands App',
+      route: '/deploy/components/openhands',
+      children: [
+        { id: 'dc-oh-overview',       title: 'Overview',                      route: '/deploy/components/openhands' },
+        { id: 'dc-oh-main',           title: 'Main Deployment',               route: '/deploy/components/openhands/main-deployment' },
+        { id: 'dc-oh-github-events',  title: 'GitHub Events Deployment',      route: '/deploy/components/openhands/github-events' },
+        { id: 'dc-oh-helm',           title: 'Helm Chart Reference',          route: '/deploy/components/openhands/helm' },
+        { id: 'dc-oh-hpa',            title: 'HPA / Scaling',                 route: '/deploy/components/openhands/hpa' },
+        { id: 'dc-oh-waitlist',       title: 'User Waitlist ConfigMap',        route: '/deploy/components/openhands/waitlist' },
+        { id: 'dc-oh-webhooks',       title: 'GITHUB_WEBHOOKS_ENABLED Flag',  route: '/deploy/components/openhands/webhooks-flag' },
+      ],
+    },
+    {
+      id: 'dc-data-platform',
+      title: 'Data Platform',
+      route: '/deploy/components/data-platform',
+      children: [
+        { id: 'dc-dp-overview', title: 'Overview',                  route: '/deploy/components/data-platform' },
+        { id: 'dc-dp-routes',   title: 'FastAPI Routes',            route: '/deploy/components/data-platform/routes' },
+        { id: 'dc-dp-auth',     title: 'Auth & IP Allowlisting',    route: '/deploy/components/data-platform/auth' },
+        { id: 'dc-dp-hubspot',  title: 'HubSpot Sync Cronjob',      route: '/deploy/components/data-platform/hubspot-sync' },
+        { id: 'dc-dp-helm',     title: 'Helm Chart Reference',      route: '/deploy/components/data-platform/helm' },
+        { id: 'dc-dp-db',       title: 'Database Session Patterns', route: '/deploy/components/data-platform/database' },
+      ],
+    },
+    {
+      id: 'dc-automation',
+      title: 'Automation Service',
+      route: '/deploy/components/automation',
+      children: [
+        { id: 'dc-auto-overview', title: 'Overview',                    route: '/deploy/components/automation' },
+        { id: 'dc-auto-source',   title: 'Source Repository Reference', route: '/deploy/components/automation/source-repo' },
+        { id: 'dc-auto-helm',     title: 'Helm Chart Reference',        route: '/deploy/components/automation/helm' },
+        { id: 'dc-auto-images',   title: 'Docker Image Tags',           route: '/deploy/components/automation/image-tags' },
+      ],
+    },
+    {
+      id: 'dc-image-loader',
+      title: 'Image Loader',
+      route: '/deploy/components/image-loader',
+      children: [
+        { id: 'dc-il-overview',  title: 'Overview',              route: '/deploy/components/image-loader' },
+        { id: 'dc-il-daemonset', title: 'DaemonSet',             route: '/deploy/components/image-loader/daemonset' },
+        { id: 'dc-il-overprov',  title: 'Node Overprovisioner',  route: '/deploy/components/image-loader/overprovisioner' },
+        { id: 'dc-il-priority',  title: 'Priority Class',        route: '/deploy/components/image-loader/priority-class' },
+        { id: 'dc-il-helm',      title: 'Helm Chart Reference',  route: '/deploy/components/image-loader/helm' },
+      ],
+    },
+    {
+      id: 'dc-error-page',
+      title: 'Error Page',
+      route: '/deploy/components/error-page',
+      children: [
+        { id: 'dc-ep-overview', title: 'Overview',             route: '/deploy/components/error-page' },
+        { id: 'dc-ep-helm',     title: 'Helm Chart Reference', route: '/deploy/components/error-page/helm' },
+      ],
+    },
+    {
+      id: 'dc-keycloak',
+      title: 'Keycloak',
+      route: '/deploy/components/keycloak',
+      children: [
+        { id: 'dc-kc-overview', title: 'Overview',             route: '/deploy/components/keycloak' },
+        { id: 'dc-kc-envs',     title: 'Environment Configs',  route: '/deploy/components/keycloak/envs' },
+      ],
+    },
+    {
+      id: 'dc-grafana',
+      title: 'Grafana',
+      route: '/deploy/components/grafana',
+      children: [
+        { id: 'dc-gf-overview', title: 'Overview',            route: '/deploy/components/grafana' },
+        { id: 'dc-gf-envs',     title: 'Environment Configs', route: '/deploy/components/grafana/envs' },
+      ],
+    },
+    {
+      id: 'dc-runtime-api',
+      title: 'Runtime API',
+      route: '/deploy/components/runtime-api',
+      children: [
+        { id: 'dc-ra-overview', title: 'Overview',                     route: '/deploy/components/runtime-api' },
+        { id: 'dc-ra-warm',     title: 'Warm Runtimes Configuration',  route: '/deploy/components/runtime-api/warm-runtimes' },
+      ],
+    },
+  ],
+
+  environments: [
+    { id: 'env-overview', title: 'Environments Overview', route: '/deploy/environments' },
+    {
+      id: 'env-feature',
+      title: 'Feature Environments',
+      route: '/deploy/environments/feature',
+      children: [
+        { id: 'env-feat-what',      title: 'What They Are',              route: '/deploy/environments/feature' },
+        { id: 'env-feat-trigger',   title: 'How They Are Created',       route: '/deploy/environments/feature/trigger' },
+        { id: 'env-feat-namespace', title: 'Namespace Naming Convention', route: '/deploy/environments/feature/namespace' },
+        { id: 'env-feat-access',    title: 'Accessing a Feature Env',    route: '/deploy/environments/feature/access' },
+      ],
+    },
+    {
+      id: 'env-staging',
+      title: 'Staging',
+      route: '/deploy/environments/staging',
+      children: [
+        { id: 'env-stg-deploy', title: 'How to Deploy to Staging', route: '/deploy/environments/staging/deploy' },
+        { id: 'env-stg-diff',   title: 'Difference from Feature',  route: '/deploy/environments/staging/vs-feature' },
+        { id: 'env-stg-urls',   title: 'URLs',                     route: '/deploy/environments/staging/urls' },
+      ],
+    },
+    {
+      id: 'env-production',
+      title: 'Production',
+      route: '/deploy/environments/production',
+      children: [
+        { id: 'env-prod-tags',    title: 'How Tags Trigger Production', route: '/deploy/environments/production/tag-trigger' },
+        { id: 'env-prod-release', title: 'Release Branch Strategy',     route: '/deploy/environments/production/release-branch' },
+        { id: 'env-prod-urls',    title: 'URLs',                        route: '/deploy/environments/production/urls' },
+      ],
+    },
+    {
+      id: 'env-evaluation',
+      title: 'Evaluation Environment',
+      route: '/deploy/environments/evaluation',
+      children: [
+        { id: 'env-eval-overview', title: 'Overview & Purpose', route: '/deploy/environments/evaluation' },
+      ],
+    },
+  ],
+
+  'release-and-deploy': [
+    {
+      id: 'rd-overview',
+      title: 'Deployment Overview',
+      route: '/deploy/release',
+      children: [
+        { id: 'rd-flow',          title: 'Release Flow',              route: '/deploy/release/flow' },
+        { id: 'rd-shas',          title: 'SHA & Version Variables',   route: '/deploy/release/sha-versions' },
+        { id: 'rd-commit-update', title: 'Updating a Commit Reference', route: '/deploy/release/update-commit' },
+      ],
+    },
+    {
+      id: 'rd-openhands',
+      title: 'Deploying the OpenHands App',
+      route: '/deploy/release/openhands',
+      children: [
+        { id: 'rd-oh-feature',  title: 'Feature Deployment',     route: '/deploy/release/openhands/feature' },
+        { id: 'rd-oh-staging',  title: 'Staging Deployment',     route: '/deploy/release/openhands/staging' },
+        { id: 'rd-oh-prod',     title: 'Production Deployment',  route: '/deploy/release/openhands/production' },
+      ],
+    },
+    { id: 'rd-data-platform', title: 'Deploying the Data Platform',     route: '/deploy/release/data-platform' },
+    { id: 'rd-automation',    title: 'Deploying the Automation Service', route: '/deploy/release/automation' },
+    { id: 'rd-error-page',    title: 'Deploying the Error Page',         route: '/deploy/release/error-page' },
+    { id: 'rd-grafana',       title: 'Deploying Grafana',                route: '/deploy/release/grafana' },
+    { id: 'rd-eval-runtime',  title: 'Deploying the Eval Runtime',       route: '/deploy/release/eval-runtime' },
+    {
+      id: 'rd-helm',
+      title: 'Helm Usage',
+      route: '/deploy/release/helm',
+      children: [
+        { id: 'rd-helm-install',  title: 'Install vs. Upgrade',          route: '/deploy/release/helm/install-upgrade' },
+        { id: 'rd-helm-values',   title: 'Passing Environment Values',   route: '/deploy/release/helm/env-values' },
+        { id: 'rd-helm-version',  title: 'Chart Version Pinning',        route: '/deploy/release/helm/chart-version' },
+      ],
+    },
+  ],
+
+  'secrets-and-ops': [
+    {
+      id: 'so-overview',
+      title: 'Secrets Management Overview',
+      route: '/deploy/secrets',
+      children: [
+        { id: 'so-sops',  title: 'SOPS Encryption',                    route: '/deploy/secrets/sops' },
+        { id: 'so-kms',   title: 'GCP KMS Key Reference',              route: '/deploy/secrets/kms' },
+        { id: 'so-rule',  title: 'Never Edit Encrypted Files Manually', route: '/deploy/secrets/edit-rule' },
+      ],
+    },
+    {
+      id: 'so-encrypt',
+      title: 'Encrypting & Decrypting',
+      route: '/deploy/secrets/encrypt-decrypt',
+      children: [
+        { id: 'so-decrypt',     title: 'scripts/decrypt.sh',            route: '/deploy/secrets/decrypt' },
+        { id: 'so-encrypt-sh',  title: 'scripts/encrypt.sh',            route: '/deploy/secrets/encrypt' },
+        { id: 'so-safe-apply',  title: 'scripts/safe-apply-secrets.sh', route: '/deploy/secrets/safe-apply' },
+      ],
+    },
+    {
+      id: 'so-by-component',
+      title: 'Secrets by Component',
+      route: '/deploy/secrets/by-component',
+      children: [
+        { id: 'so-oh-secrets', title: 'OpenHands App Secrets',   route: '/deploy/secrets/by-component/openhands' },
+        { id: 'so-dp-secrets', title: 'Data Platform Secrets',   route: '/deploy/secrets/by-component/data-platform' },
+        { id: 'so-kc-secrets', title: 'Keycloak Secrets',        route: '/deploy/secrets/by-component/keycloak' },
+      ],
+    },
+    { id: 'so-add-rotate',  title: 'Adding / Rotating a Secret',        route: '/deploy/secrets/add-rotate' },
+    { id: 'so-ip-allowlist',title: 'IP Allowlisting (Data Platform)',    route: '/deploy/secrets/ip-allowlist' },
+    {
+      id: 'so-helm-values',
+      title: 'Helm Values Configuration',
+      route: '/deploy/secrets/helm-values',
+      children: [
+        { id: 'so-hv-per-env',  title: 'values.yaml Per Environment',    route: '/deploy/secrets/helm-values/per-env' },
+        { id: 'so-hv-env-vars', title: 'Environment Variables Reference', route: '/deploy/secrets/helm-values/env-vars' },
+        { id: 'so-hv-waitlist', title: 'User Waitlist Option',            route: '/deploy/secrets/helm-values/waitlist' },
+      ],
+    },
+    {
+      id: 'so-local',
+      title: 'Local Secrets',
+      route: '/deploy/secrets/local',
+      children: [
+        { id: 'so-local-decrypt',  title: 'local/decrypt_env.sh',    route: '/deploy/secrets/local/decrypt-env' },
+        { id: 'so-local-convert',  title: 'local/convert_to_env.py', route: '/deploy/secrets/local/convert-to-env' },
+      ],
+    },
+  ],
+
+  'deploy-testing': [
+    { id: 'dt-overview', title: 'Testing Overview', route: '/deploy/testing' },
+    {
+      id: 'dt-e2e',
+      title: 'E2E Tests',
+      route: '/deploy/testing/e2e',
+      children: [
+        { id: 'dt-e2e-overview', title: 'Overview & Tech Stack',       route: '/deploy/testing/e2e' },
+        { id: 'dt-e2e-prereqs',  title: 'Prerequisites & Installation', route: '/deploy/testing/e2e/prereqs' },
+        { id: 'dt-e2e-config',   title: 'Configuration',               route: '/deploy/testing/e2e/config' },
+        { id: 'dt-e2e-auth',     title: 'Authentication Methods',      route: '/deploy/testing/e2e/auth' },
+        { id: 'dt-e2e-run',      title: 'Running Tests',               route: '/deploy/testing/e2e/run' },
+        { id: 'dt-e2e-envs',     title: 'Environments',                route: '/deploy/testing/e2e/environments' },
+        { id: 'dt-e2e-pom',      title: 'Page Object Models',          route: '/deploy/testing/e2e/page-objects' },
+        { id: 'dt-e2e-tags',     title: 'Test Tags',                   route: '/deploy/testing/e2e/tags' },
+        { id: 'dt-e2e-ci',       title: 'CI/CD Integration',           route: '/deploy/testing/e2e/ci' },
+      ],
+    },
+    {
+      id: 'dt-automation',
+      title: 'Automation Integration Tests',
+      route: '/deploy/testing/automation',
+      children: [
+        { id: 'dt-auto-overview',  title: 'Overview',                         route: '/deploy/testing/automation' },
+        { id: 'dt-auto-prereqs',   title: 'Prerequisites',                    route: '/deploy/testing/automation/prereqs' },
+        { id: 'dt-auto-run',       title: 'Running (Sequential vs. Parallel)', route: '/deploy/testing/automation/run' },
+        { id: 'dt-auto-crud',      title: 'test_automation_api.py',           route: '/deploy/testing/automation/crud' },
+        { id: 'dt-auto-upload',    title: 'test_upload_api.py',               route: '/deploy/testing/automation/upload' },
+        { id: 'dt-auto-dispatch',  title: 'test_e2e_dispatch.py',             route: '/deploy/testing/automation/dispatch' },
+        { id: 'dt-auto-timeout',   title: 'test_e2e_timeout.py',              route: '/deploy/testing/automation/timeout' },
+        { id: 'dt-auto-preset',    title: 'test_preset_prompt_api.py',        route: '/deploy/testing/automation/preset-prompt' },
+      ],
+    },
+    {
+      id: 'dt-data-platform',
+      title: 'Data Platform Unit Tests',
+      route: '/deploy/testing/data-platform',
+      children: [
+        { id: 'dt-dp-run',     title: 'Running the Tests',       route: '/deploy/testing/data-platform/run' },
+        { id: 'dt-dp-modules', title: 'Test Modules Reference',  route: '/deploy/testing/data-platform/modules' },
+      ],
+    },
+    {
+      id: 'dt-hubspot',
+      title: 'HubSpot Sync Unit Tests',
+      route: '/deploy/testing/hubspot-sync',
+      children: [
+        { id: 'dt-hs-run', title: 'Running the Tests', route: '/deploy/testing/hubspot-sync/run' },
+      ],
+    },
+    {
+      id: 'dt-conv-mgr',
+      title: 'Clustered Conversation Manager Tests',
+      route: '/deploy/testing/conversation-manager',
+      children: [
+        { id: 'dt-cm-setup',   title: 'Test Environment Setup', route: '/deploy/testing/conversation-manager/setup' },
+        { id: 'dt-cm-terms',   title: 'Terminology',            route: '/deploy/testing/conversation-manager/terminology' },
+        { id: 'dt-cm-cases',   title: 'All 14 Test Cases',      route: '/deploy/testing/conversation-manager/cases' },
+        { id: 'dt-cm-trouble', title: 'Troubleshooting',        route: '/deploy/testing/conversation-manager/troubleshooting' },
+      ],
+    },
+  ],
+
+  'cicd-reference': [
+    { id: 'cicd-overview',    title: 'Workflows Overview',                       route: '/deploy/cicd' },
+    { id: 'cicd-deploy',      title: 'deploy.yaml — Main Deploy',                route: '/deploy/cicd/deploy' },
+    { id: 'cicd-k8s',         title: '_k8s_deploy.yaml — Reusable K8s Deploy',   route: '/deploy/cicd/k8s-deploy' },
+    { id: 'cicd-docker',      title: '_docker_push.yaml — Docker Build & Push',  route: '/deploy/cicd/docker-push' },
+    { id: 'cicd-e2e',         title: '_e2e.yaml — Reusable E2E Tests',           route: '/deploy/cicd/e2e' },
+    { id: 'cicd-data-api',    title: 'deploy-data-api.yaml',                     route: '/deploy/cicd/deploy-data-api' },
+    { id: 'cicd-automation',  title: 'deploy-automation.yaml',                   route: '/deploy/cicd/deploy-automation' },
+    { id: 'cicd-error-page',  title: 'deploy-error-page.yaml',                   route: '/deploy/cicd/deploy-error-page' },
+    { id: 'cicd-grafana',     title: 'deploy-grafana.yaml',                      route: '/deploy/cicd/deploy-grafana' },
+    { id: 'cicd-eval',        title: 'deploy-eval-runtime.yaml',                 route: '/deploy/cicd/deploy-eval-runtime' },
+    { id: 'cicd-auto-tests',  title: 'automation-integration-tests.yaml',        route: '/deploy/cicd/automation-integration-tests' },
+    { id: 'cicd-run-e2e',     title: 'run_e2e_tests.yaml',                       route: '/deploy/cicd/run-e2e-tests' },
+    { id: 'cicd-chart-check', title: 'chart-version-check.yaml',                 route: '/deploy/cicd/chart-version-check' },
+    { id: 'cicd-commit-check',title: 'latest-commit-check.yaml',                 route: '/deploy/cicd/latest-commit-check' },
+    { id: 'cicd-preview-pr',  title: 'create-openhands-preview-pr.yaml',         route: '/deploy/cicd/preview-pr' },
+    { id: 'cicd-stale',       title: 'close-stale-ohpr.yml',                     route: '/deploy/cicd/close-stale' },
+    { id: 'cicd-lint',        title: 'lint.yml — Python Linting',                route: '/deploy/cicd/lint' },
+    { id: 'cicd-unit',        title: 'py-unit-tests.yml — Python Unit Tests',    route: '/deploy/cicd/unit-tests' },
+  ],
+
+  'deploy-dev-guide': [
+    {
+      id: 'ddg-setup',
+      title: 'Dev Setup',
+      route: '/deploy/dev-guide',
+      children: [
+        { id: 'ddg-prereqs', title: 'Prerequisites',                          route: '/deploy/dev-guide/prereqs' },
+        { id: 'ddg-clone',   title: 'Cloning (deploy + OpenHands sibling)',   route: '/deploy/dev-guide/clone' },
+        { id: 'ddg-install', title: 'poetry install',                         route: '/deploy/dev-guide/install' },
+        { id: 'ddg-build',   title: 'make build',                             route: '/deploy/dev-guide/build' },
+      ],
+    },
+    {
+      id: 'ddg-run',
+      title: 'Running Locally',
+      route: '/deploy/dev-guide/run',
+      children: [
+        { id: 'ddg-run-all',     title: 'make run (backend + frontend)',       route: '/deploy/dev-guide/run/all' },
+        { id: 'ddg-run-backend', title: 'make start-backend',                  route: '/deploy/dev-guide/run/backend' },
+        { id: 'ddg-run-config',  title: 'Backend Config & VS Code Launch',    route: '/deploy/dev-guide/run/config' },
+        { id: 'ddg-run-creds',   title: 'LiteLLM / GitHub App Credentials',   route: '/deploy/dev-guide/run/credentials' },
+      ],
+    },
+    {
+      id: 'ddg-lint',
+      title: 'Code Style & Linting',
+      route: '/deploy/dev-guide/lint',
+      children: [
+        { id: 'ddg-lint-precommit', title: 'Pre-commit (ruff, mypy)', route: '/deploy/dev-guide/lint/pre-commit' },
+        { id: 'ddg-lint-run',       title: 'Running pre-commit',      route: '/deploy/dev-guide/lint/run' },
+        { id: 'ddg-lint-fix',       title: 'Fixing Lint Errors',      route: '/deploy/dev-guide/lint/fix' },
+      ],
+    },
+    { id: 'ddg-branches',       title: 'Branch Naming (< 20 chars)',               route: '/deploy/dev-guide/branch-naming' },
+    {
+      id: 'ddg-db',
+      title: 'Database Patterns',
+      route: '/deploy/dev-guide/database',
+      children: [
+        { id: 'ddg-db-session',      title: 'session_maker vs. a_session_maker', route: '/deploy/dev-guide/database/session-makers' },
+        { id: 'ddg-db-async',        title: 'call_sync_from_async Pattern',      route: '/deploy/dev-guide/database/async-pattern' },
+        { id: 'ddg-db-antipatterns', title: 'Anti-patterns to Avoid',            route: '/deploy/dev-guide/database/antipatterns' },
+      ],
+    },
+    { id: 'ddg-update-commit', title: 'Updating the OpenHands Commit (3 locations)', route: '/deploy/dev-guide/update-commit' },
+    {
+      id: 'ddg-pr',
+      title: 'PR Process',
+      route: '/deploy/dev-guide/pr-process',
+      children: [
+        { id: 'ddg-pr-secrets-rule', title: 'Secrets Rule (never modify secrets/)', route: '/deploy/dev-guide/pr-process/secrets-rule' },
+        { id: 'ddg-pr-chart-check',  title: 'Chart Version Check',                  route: '/deploy/dev-guide/pr-process/chart-check' },
+      ],
+    },
   ],
 };
