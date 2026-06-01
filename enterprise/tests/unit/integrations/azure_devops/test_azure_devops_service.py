@@ -6,7 +6,7 @@ import pytest
 from integrations.azure_devops.azure_devops_service import SaaSAzureDevOpsService
 from pydantic import SecretStr
 
-from openhands.app_server.integrations.service_types import ProviderType
+from openhands.app_server.integrations.service_types import ProviderType, RequestMethod
 
 
 @pytest.mark.asyncio
@@ -135,3 +135,64 @@ async def test_work_item_comment_urls_do_not_duplicate_organization():
         'https://dev.azure.com/alonaking/My%20Project/_apis/wit/workItems/42/'
     )
     assert 'alonaking/alonaking' not in url
+
+
+@pytest.mark.asyncio
+async def test_create_pr_comment_service_hook_posts_expected_payload():
+    service = SaaSAzureDevOpsService(token=SecretStr('token'), base_domain='alonaking')
+    service._make_request = AsyncMock(  # type: ignore[method-assign]
+        return_value=({'id': 'subscription-id'}, {})
+    )
+
+    response = await service.create_pr_comment_service_hook(
+        project_id='project-id',
+        repo_id='repo-id',
+        webhook_url='https://app.example.com/integration/azure-devops/events',
+        webhook_secret='secret',
+    )
+
+    assert response == {'id': 'subscription-id'}
+    kwargs = service._make_request.await_args.kwargs
+    assert kwargs['url'] == (
+        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions'
+        '?api-version=7.1'
+    )
+    assert kwargs['method'] == RequestMethod.POST
+    assert kwargs['params']['eventType'] == 'ms.vss-code.git-pullrequest-comment-event'
+    assert kwargs['params']['resourceVersion'] == '2.0'
+    assert kwargs['params']['publisherInputs'] == {
+        'projectId': 'project-id',
+        'repository': 'repo-id',
+    }
+    assert kwargs['params']['consumerInputs']['url'] == (
+        'https://app.example.com/integration/azure-devops/events'
+    )
+    assert kwargs['params']['consumerInputs']['basicAuthUsername'] == 'openhands'
+    assert kwargs['params']['consumerInputs']['basicAuthPassword'] == 'secret'
+
+
+@pytest.mark.asyncio
+async def test_create_work_item_comment_service_hook_posts_expected_payload():
+    service = SaaSAzureDevOpsService(token=SecretStr('token'), base_domain='alonaking')
+    service._make_request = AsyncMock(  # type: ignore[method-assign]
+        return_value=({'id': 'subscription-id'}, {})
+    )
+
+    response = await service.create_work_item_comment_service_hook(
+        project_id='project-id',
+        webhook_url='https://app.example.com/integration/azure-devops/events',
+        webhook_secret='secret',
+    )
+
+    assert response == {'id': 'subscription-id'}
+    kwargs = service._make_request.await_args.kwargs
+    assert kwargs['url'] == (
+        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions'
+        '?api-version=7.1'
+    )
+    assert kwargs['method'] == RequestMethod.POST
+    assert kwargs['params']['eventType'] == 'workitem.commented'
+    assert kwargs['params']['resourceVersion'] == '1.0'
+    assert kwargs['params']['publisherInputs'] == {'projectId': 'project-id'}
+    assert kwargs['params']['consumerInputs']['basicAuthUsername'] == 'openhands'
+    assert kwargs['params']['consumerInputs']['basicAuthPassword'] == 'secret'
