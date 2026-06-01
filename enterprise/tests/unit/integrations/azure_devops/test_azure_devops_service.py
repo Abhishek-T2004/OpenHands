@@ -154,8 +154,7 @@ async def test_create_pr_comment_service_hook_posts_expected_payload():
     assert response == {'id': 'subscription-id'}
     kwargs = service._make_request.await_args.kwargs
     assert kwargs['url'] == (
-        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions'
-        '?api-version=7.1'
+        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions?api-version=7.1'
     )
     assert kwargs['method'] == RequestMethod.POST
     assert kwargs['params']['eventType'] == 'ms.vss-code.git-pullrequest-comment-event'
@@ -187,8 +186,7 @@ async def test_create_work_item_comment_service_hook_posts_expected_payload():
     assert response == {'id': 'subscription-id'}
     kwargs = service._make_request.await_args.kwargs
     assert kwargs['url'] == (
-        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions'
-        '?api-version=7.1'
+        'https://dev.azure.com/alonaking/_apis/hooks/subscriptions?api-version=7.1'
     )
     assert kwargs['method'] == RequestMethod.POST
     assert kwargs['params']['eventType'] == 'workitem.commented'

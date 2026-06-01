@@ -153,7 +153,13 @@ def _normalize_resource(
     repo_id = resource.repo_id.strip()
     repo_name = resource.repo_name.strip()
 
-    if not organization or not project_id or not project_name or not repo_id or not repo_name:
+    if (
+        not organization
+        or not project_id
+        or not project_name
+        or not repo_id
+        or not repo_name
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(

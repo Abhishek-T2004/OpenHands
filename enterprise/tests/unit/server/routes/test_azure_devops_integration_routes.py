@@ -100,7 +100,10 @@ async def test_get_azure_devops_resources_reports_installed_status(monkeypatch):
     assert resource.webhook_installed is True
     assert resource.pr_subscription_id == 'pr-subscription-id'
     assert resource.work_item_subscription_id == 'work-item-subscription-id'
-    assert resource.webhook_url == 'https://app.example.com/integration/azure-devops/events'
+    assert (
+        resource.webhook_url
+        == 'https://app.example.com/integration/azure-devops/events'
+    )
 
 
 @pytest.mark.asyncio
