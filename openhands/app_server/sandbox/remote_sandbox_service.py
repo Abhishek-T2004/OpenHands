@@ -12,7 +12,7 @@ import base62
 import httpx
 from fastapi import Request
 from pydantic import Field
-from sqlalchemy import String, func, select
+from sqlalchemy import Boolean, String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,7 +27,7 @@ from openhands.app_server.app_conversation.app_conversation_info_service import 
 from openhands.app_server.app_conversation.app_conversation_models import (
     AppConversationInfo,
 )
-from openhands.app_server.errors import SandboxError
+from openhands.app_server.errors import ConcurrencyLimitError, SandboxError
 from openhands.app_server.event.event_service import EventService
 from openhands.app_server.event_callback.event_callback_service import (
     EventCallbackService,
@@ -99,6 +99,7 @@ class StoredRemoteSandbox(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime, server_default=func.now(), index=True
     )
+    is_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0')
 
 
 @dataclass
@@ -234,28 +235,18 @@ class RemoteSandboxService(SandboxService):
         )
 
     async def _count_user_running_sandboxes(self) -> int:
-        """Count the number of running sandboxes for the current user.
+        """Count the number of running (non-paused) sandboxes for the current user.
+
+        Queries the DB directly by created_by_user_id and is_paused, avoiding
+        a global runtime API call for every concurrency check.
 
         Returns:
             int: Number of running sandboxes
         """
-        # Get all running runtimes from the runtime API
-        response = await self._send_runtime_api_request('GET', '/list')
-        content = response.json()
-        running_session_ids = {
-            runtime.get('session_id') for runtime in content['runtimes']
-        }
-
-        if not running_session_ids:
-            return 0
-
-        # Filter to only sandboxes owned by the current user
         query = await self._secure_select()
-        query = query.filter(StoredRemoteSandbox.id.in_(running_session_ids))
+        query = query.filter(StoredRemoteSandbox.is_paused == False)  # noqa: E712
         result = await self.db_session.execute(query)
-        user_running_sandboxes = result.scalars().all()
-
-        return len(user_running_sandboxes)
+        return len(result.scalars().all())
 
     async def _get_stored_sandbox(self, sandbox_id: str) -> StoredRemoteSandbox | None:
         stmt = await self._secure_select()
@@ -489,8 +480,6 @@ class RemoteSandboxService(SandboxService):
         Raises:
             ConcurrencyLimitError: If the user has reached their limit
         """
-        from openhands.app_server.errors import ConcurrencyLimitError
-
         effective_limit = await self._get_user_effective_sandbox_limit()
         current_count = await self._count_user_running_sandboxes()
 
@@ -521,8 +510,6 @@ class RemoteSandboxService(SandboxService):
         The lock is released after the sandbox record is inserted (before the
         long-running runtime startup) to avoid blocking concurrent requests.
         """
-        from openhands.app_server.errors import ConcurrencyLimitError
-
         try:
             # Get sandbox spec early (before locking) to minimize lock hold time
             if sandbox_spec_id is None:
@@ -688,6 +675,7 @@ class RemoteSandboxService(SandboxService):
                     f'Updated session_api_key_hash for sandbox {sandbox_id} after resume'
                 )
 
+            stored_sandbox.is_paused = False
             return True
         except httpx.HTTPError as e:
             _logger.error(f'Error resuming sandbox {sandbox_id}: {e}')
@@ -707,6 +695,7 @@ class RemoteSandboxService(SandboxService):
             # Security: Invalidate the session API key hash to prevent
             # leaked keys from being used while the sandbox is paused.
             stored_sandbox.session_api_key_hash = None
+            stored_sandbox.is_paused = True
 
             runtime_data = await self._get_runtime(sandbox_id)
             response = await self._send_runtime_api_request(
@@ -762,17 +751,10 @@ class RemoteSandboxService(SandboxService):
         if max_num_sandboxes <= 0:
             raise ValueError('max_num_sandboxes must be greater than 0')
 
-        response = await self._send_runtime_api_request(
-            'GET',
-            '/list',
-        )
-        content = response.json()
-        running_session_ids = [
-            runtime.get('session_id') for runtime in content['runtimes']
-        ]
-
+        # Query running sandboxes from DB directly using is_paused flag, avoiding
+        # a global runtime API call that returns all users' runtimes.
         query = await self._secure_select()
-        query = query.filter(StoredRemoteSandbox.id.in_(running_session_ids)).order_by(
+        query = query.filter(StoredRemoteSandbox.is_paused == False).order_by(  # noqa: E712
             StoredRemoteSandbox.created_at.desc()
         )
         running_sandboxes = list(await self.db_session.execute(query))

@@ -2,7 +2,11 @@
 
 from uuid import UUID
 
-from server.constants import ROLE_ADMIN, ROLE_OWNER
+from server.constants import (
+    DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
+    ROLE_ADMIN,
+    ROLE_OWNER,
+)
 from server.routes.org_models import (
     CannotModifySelfError,
     InsufficientPermissionError,
@@ -63,7 +67,7 @@ class OrgMemberService:
         # Get org's max_concurrent_sandboxes for effective limit calculation
         org = await OrgStore.get_org_by_id(org_id)
         org_max_concurrent_sandboxes = (
-            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else 3
+            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
         )
 
         return MeResponse.from_org_member(
@@ -110,7 +114,7 @@ class OrgMemberService:
         # Get org's max_concurrent_sandboxes for effective limit calculation
         org = await OrgStore.get_org_by_id(org_id)
         org_max_concurrent_sandboxes = (
-            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else 3
+            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
         )
 
         # Call store to get paginated members
@@ -333,7 +337,7 @@ class OrgMemberService:
         # Get org for effective limit calculation
         org = await OrgStore.get_org_by_id(org_id)
         org_max_concurrent_sandboxes = (
-            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else 3
+            org.max_concurrent_sandboxes if org and org.max_concurrent_sandboxes else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
         )
 
         # Track if any updates were made

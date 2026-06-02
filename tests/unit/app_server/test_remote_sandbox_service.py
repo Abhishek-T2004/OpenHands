@@ -117,6 +117,7 @@ def create_stored_sandbox(
     spec_id: str = 'test-image:latest',
     created_at: datetime | None = None,
     session_api_key_hash: str | None = None,
+    is_paused: bool = False,
 ) -> StoredRemoteSandbox:
     """Helper function to create StoredRemoteSandbox for testing."""
     if created_at is None:
@@ -128,6 +129,7 @@ def create_stored_sandbox(
         sandbox_spec_id=spec_id,
         session_api_key_hash=session_api_key_hash,
         created_at=created_at,
+        is_paused=is_paused,
     )
 
 
@@ -1348,49 +1350,39 @@ class TestConcurrencyLimits:
         assert result == 10  # global fallback (max_num_sandboxes)
 
     @pytest.mark.asyncio
-    async def test_count_running_sandboxes_returns_zero_when_no_runtimes(
+    async def test_count_running_sandboxes_returns_zero_when_no_db_records(
         self, remote_sandbox_service
     ):
-        """Test that _count_user_running_sandboxes returns 0 when no running runtimes."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {'runtimes': []}
-        remote_sandbox_service.httpx_client.request = AsyncMock(
-            return_value=mock_response
-        )
+        """Test that _count_user_running_sandboxes returns 0 when user has no sandboxes."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        remote_sandbox_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         result = await remote_sandbox_service._count_user_running_sandboxes()
 
         assert result == 0
+        # No runtime API call should be made
+        remote_sandbox_service.httpx_client.request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_count_running_sandboxes_counts_only_user_sandboxes(
+    async def test_count_running_sandboxes_excludes_paused_sandboxes(
         self, remote_sandbox_service
     ):
-        """Test that _count_user_running_sandboxes counts only current user's sandboxes."""
-        # Setup runtime API response with 3 running sandboxes
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            'runtimes': [
-                {'session_id': 'sandbox-1'},
-                {'session_id': 'sandbox-2'},
-                {'session_id': 'sandbox-3'},
-            ]
-        }
-        remote_sandbox_service.httpx_client.request = AsyncMock(
-            return_value=mock_response
-        )
-
-        # Setup DB query to return only 2 sandboxes owned by user
+        """Test that _count_user_running_sandboxes only counts non-paused sandboxes."""
+        # DB returns 2 running sandboxes (is_paused=False) filtered by the query;
+        # paused sandboxes are excluded at the query level.
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [
-            create_stored_sandbox(sandbox_id='sandbox-1'),
-            create_stored_sandbox(sandbox_id='sandbox-2'),
+            create_stored_sandbox(sandbox_id='sandbox-1', is_paused=False),
+            create_stored_sandbox(sandbox_id='sandbox-2', is_paused=False),
         ]
         remote_sandbox_service.db_session.execute = AsyncMock(return_value=mock_result)
 
         result = await remote_sandbox_service._count_user_running_sandboxes()
 
         assert result == 2
+        # No runtime API call should be made
+        remote_sandbox_service.httpx_client.request.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_start_sandbox_raises_concurrency_error_when_at_limit(

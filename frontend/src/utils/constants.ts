@@ -120,8 +120,10 @@ export const METADATA_PREFIXES: readonly string[] = [
 ];
 
 /**
- * Default concurrent sandbox limit for personal workspaces.
- * This must match DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES in the backend
- * (enterprise/server/constants.py).
+ * Fallback concurrent sandbox limit used when the backend error does not
+ * include a limit value. Matches DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES
+ * in the backend (enterprise/server/constants.py).
+ * Personal workspaces have a lower limit (3) — the backend always sends the
+ * actual limit in the error detail, so this constant is only a safety net.
  */
-export const DEFAULT_CONCURRENT_SANDBOX_LIMIT = 3;
+export const DEFAULT_CONCURRENT_SANDBOX_LIMIT = 10;

@@ -10,6 +10,7 @@ from pydantic import (
     model_validator,
 )
 from server.constants import (
+    DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES,
     DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
     LITE_LLM_API_URL,
 )
@@ -226,7 +227,7 @@ class OrgResponse(BaseModel):
             is_personal=str(org.id) == user_id if user_id else False,
             max_concurrent_sandboxes=org.max_concurrent_sandboxes
             if org.max_concurrent_sandboxes is not None
-            else (3 if str(org.id) == user_id else 10),
+            else (DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES if str(org.id) == user_id else DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES),
         )
 
 
@@ -567,7 +568,7 @@ class MeResponse(BaseModel):
         member: OrgMember,
         role: Role,
         email: str,
-        org_max_concurrent_sandboxes: int = 3,
+        org_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
     ) -> 'MeResponse':
         """Create a MeResponse from an OrgMember, Role, and user email."""
         effective_limit = (
@@ -595,7 +596,7 @@ class OrgAppSettingsResponse(BaseModel):
 
     enable_proactive_conversation_starters: bool = True
     max_budget_per_task: float | None = None
-    max_concurrent_sandboxes: int = 3
+    max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @classmethod
     def from_org(cls, org: Org) -> 'OrgAppSettingsResponse':
@@ -614,7 +615,7 @@ class OrgAppSettingsResponse(BaseModel):
             max_budget_per_task=org.max_budget_per_task,
             max_concurrent_sandboxes=org.max_concurrent_sandboxes
             if org.max_concurrent_sandboxes is not None
-            else 3,
+            else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
         )
 
 

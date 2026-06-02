@@ -22,18 +22,15 @@ vi.mock("react-i18next", async (importOriginal) => ({
 
 describe("ConversationLimitModal", () => {
   const onCloseMock = vi.fn();
-  const onLearnMoreMock = vi.fn();
 
   const renderModal = (props: {
     onClose?: () => void;
-    onLearnMore?: () => void;
     limit?: number;
   } = {}) => {
     const user = userEvent.setup();
     renderWithProviders(
       <ConversationLimitModal
         onClose={props.onClose ?? onCloseMock}
-        onLearnMore={props.onLearnMore}
         limit={props.limit}
       />,
     );
@@ -69,12 +66,12 @@ describe("ConversationLimitModal", () => {
       ).toBeInTheDocument();
     });
 
-    it("should display the learn more button", () => {
+    it("should not display a learn more button", () => {
       renderModal();
 
       expect(
-        screen.getByTestId("conversation-limit-learn-more-button"),
-      ).toBeInTheDocument();
+        screen.queryByTestId("conversation-limit-learn-more-button"),
+      ).not.toBeInTheDocument();
     });
 
     it("should display description with provided limit", () => {
@@ -100,35 +97,6 @@ describe("ConversationLimitModal", () => {
       await user.click(closeButton);
 
       expect(onCloseMock).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe("Learn More Button", () => {
-    it("should call onLearnMore when learn more button is clicked", async () => {
-      const { user } = renderModal({ onLearnMore: onLearnMoreMock });
-
-      const learnMoreButton = screen.getByTestId(
-        "conversation-limit-learn-more-button",
-      );
-      await user.click(learnMoreButton);
-
-      expect(onLearnMoreMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("should open docs URL when onLearnMore is not provided", async () => {
-      const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-      const { user } = renderModal();
-
-      const learnMoreButton = screen.getByTestId(
-        "conversation-limit-learn-more-button",
-      );
-      await user.click(learnMoreButton);
-
-      expect(windowOpenSpy).toHaveBeenCalledWith(
-        "https://docs.all-hands.dev/",
-        "_blank",
-      );
-      windowOpenSpy.mockRestore();
     });
   });
 
