@@ -37,8 +37,11 @@ jobs:
   apply-migrations:
     name: Apply migrations on test DB
     runs-on: ubuntu-24.04
-    # Only run if the triggering workflow (Enterprise Check Migrations) succeeded
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Only run if the triggering workflow (Enterprise Check Migrations) succeeded.
+    # When triggered via workflow_run: github.event.workflow_run.conclusion is set.
+    # When triggered via pull_request (path-filter match): github.event.workflow_run is null,
+    # but this run is valid because pull_request implies the PR modified migration files.
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run == null }}
     strategy:
       matrix:
         # Test both the production driver (pg8000) and the psycopg2 fallback.
