@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'enterprise/migrations/**'
+      - 'scripts/check_enterprise_migration_integrity.py'
+      - '.github/workflows/enterprise-check-migrations.yml'
 
 jobs:
   check-sync:
@@ -14,6 +16,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      - name: Check migration static integrity
+        run: python3 scripts/check_enterprise_migration_integrity.py
 
 
       - name: Fetch base branch
