@@ -208,3 +208,30 @@ def test_multiple_heads_fail(versions_dir: Path):
     errors = module.check_migration_integrity(versions_dir)
 
     assert any('Expected exactly one migration head' in error for error in errors)
+
+
+def test_revision_must_be_string(versions_dir: Path):
+    module = load_module()
+    (versions_dir / '001_create_users.py').write_text(
+        '\n'.join(
+            [
+                '"""Test migration with non-string revision."""',
+                '',
+                'revision = 123',
+                'down_revision = None',
+                'branch_labels = None',
+                'depends_on = None',
+                '',
+                'def upgrade():',
+                '    pass',
+                '',
+                'def downgrade():',
+                '    pass',
+                '',
+            ]
+        )
+    )
+
+    errors = module.check_migration_integrity(versions_dir)
+
+    assert any('001_create_users.py: revision must be a string' in error for error in errors)
