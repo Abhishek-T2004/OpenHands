@@ -199,6 +199,9 @@ _ACP_SNAPSHOT_STATUSES = frozenset(
 )
 
 _acp_snapshot_service: AcpSessionSnapshotService | None = None
+# Strong refs to in-flight background capture tasks (asyncio holds only weak
+# ones, so a bare create_task() can be garbage-collected before it runs).
+_ACP_CAPTURE_TASKS: set[asyncio.Task] = set()
 
 
 def _get_acp_snapshot_service() -> AcpSessionSnapshotService:
@@ -285,17 +288,20 @@ async def _handle_acp_session_events(
     if not supports_native_session_resume(provider):
         return
     assert provider is not None
-    # Background: blob capture must not delay the webhook response.
-    asyncio.create_task(
+    # Background: blob capture must not delay the webhook response. Retain a
+    # strong reference to the task until it finishes — asyncio only holds weak
+    # references, so a bare create_task() can be GC'd mid-flight.
+    task = asyncio.create_task(
         _get_acp_snapshot_service().capture(
             conversation_id=conversation_id,
             provider=provider,
             sandbox=sandbox_info,
             user_id=sandbox_info.created_by_user_id,
-            agent_version=agent_version
-            or app_conversation_info.acp_agent_version,
+            agent_version=agent_version or app_conversation_info.acp_agent_version,
         )
     )
+    _ACP_CAPTURE_TASKS.add(task)
+    task.add_done_callback(_ACP_CAPTURE_TASKS.discard)
 
 
 def detect_automation_trigger(
