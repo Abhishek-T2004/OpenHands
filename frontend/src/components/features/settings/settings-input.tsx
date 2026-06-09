@@ -21,6 +21,7 @@ interface SettingsInputProps {
   step?: number;
   pattern?: string;
   labelClassName?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 export function SettingsInput({
@@ -43,6 +44,7 @@ export function SettingsInput({
   step,
   pattern,
   labelClassName,
+  inputRef,
 }: SettingsInputProps) {
   return (
     <label className={cn("flex flex-col gap-2.5 w-fit", className)}>
@@ -53,6 +55,7 @@ export function SettingsInput({
       </div>
       {description}
       <input
+        ref={inputRef}
         data-testid={testId}
         onChange={(e) => onChange && onChange(e.target.value)}
         name={name}

@@ -186,6 +186,7 @@ export function LlmSettingsScreen({
   // getInitialView below.
   const [initialViewHint, setInitialViewHint] =
     React.useState<SettingsView | null>(null);
+  const profileNameInputRef = React.useRef<HTMLInputElement>(null);
 
   const isProfilesView = shouldShowProfilesForScope && showProfiles;
   const isOrgProfileMode = scope === "org";
@@ -254,7 +255,7 @@ export function LlmSettingsScreen({
       return I18nKey.SETTINGS$PERSONAL_AGENT_INFO;
     }
     return restrictToManagedProvider
-      ? I18nKey.SETTINGS$ORG_DEFAULTS_MANAGED_ONLY_INFO
+      ? null
       : I18nKey.SETTINGS$ORG_DEFAULTS_INFO;
   }, [isSaasMode, restrictToManagedProvider, scope]);
 
@@ -267,6 +268,18 @@ export function LlmSettingsScreen({
     },
     [profileNameWasEdited],
   );
+
+  const focusProfileNameInput = React.useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const input = profileNameInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus();
+      const cursorPosition = input.value.length;
+      input.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  }, []);
 
   const getInitialView = React.useCallback(
     (
@@ -345,9 +358,10 @@ export function LlmSettingsScreen({
         activeProvider = CUSTOM_LLM_PROVIDER;
       }
       const shouldHideApiKeyInput =
-        isSaasMode &&
-        activeProvider === "openhands" &&
-        !shouldRenderCustomFields;
+        restrictToManagedProvider ||
+        (isSaasMode &&
+          activeProvider === "openhands" &&
+          !shouldRenderCustomFields);
       const showOpenHandsApiKeyHelp =
         modelValue.startsWith("openhands/") && !isManagedMode;
 
@@ -399,6 +413,7 @@ export function LlmSettingsScreen({
           placeholder={profileNamePlaceholder}
           label={t(I18nKey.SETTINGS$LLM_PROFILE_NAME)}
           helpText={t(I18nKey.SETTINGS$LLM_PROFILE_NAME_HELP)}
+          inputRef={profileNameInputRef}
           onChange={(value) => {
             setProfileName(value);
             setProfileNameWasEdited(true);
@@ -448,6 +463,7 @@ export function LlmSettingsScreen({
                   if (nextModel) {
                     onChange("llm.model", nextModel);
                     maybeSyncProfileName(nextModel);
+                    focusProfileNameInput();
                   }
                 }}
                 wrapperClassName="!flex-col !gap-6"
@@ -527,6 +543,7 @@ export function LlmSettingsScreen({
       isManagedMode,
       isSaasMode,
       defaultModel,
+      focusProfileNameInput,
       maybeSyncProfileName,
       profileName,
       profileNameWasEdited,

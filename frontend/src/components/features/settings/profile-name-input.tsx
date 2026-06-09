@@ -15,6 +15,7 @@ interface ProfileNameInputProps {
   isOptional?: boolean;
   testId?: string;
   ruleTestId?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 export function ProfileNameInput({
@@ -27,6 +28,7 @@ export function ProfileNameInput({
   isOptional,
   testId,
   ruleTestId,
+  inputRef,
 }: ProfileNameInputProps) {
   const { t } = useTranslation();
   const trimmed = value.trim();
@@ -51,6 +53,7 @@ export function ProfileNameInput({
         placeholder={placeholder}
         onChange={onChange}
         isDisabled={isDisabled}
+        inputRef={inputRef}
       />
       <Typography.Paragraph
         testId={ruleTestId}
