@@ -8,6 +8,8 @@ interface ProfileNameInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  label?: string;
+  helpText?: string;
   isDisabled?: boolean;
   /** Render label as "Name (Optional)" when this field isn't required. */
   isOptional?: boolean;
@@ -19,6 +21,8 @@ export function ProfileNameInput({
   value,
   onChange,
   placeholder,
+  label: labelOverride,
+  helpText,
   isDisabled,
   isOptional,
   testId,
@@ -27,9 +31,14 @@ export function ProfileNameInput({
   const { t } = useTranslation();
   const trimmed = value.trim();
   const isInvalid = trimmed.length > 0 && !PROFILE_NAME_PATTERN.test(trimmed);
-  const label = isOptional
-    ? `${t(I18nKey.SETTINGS$NAME)} (${t(I18nKey.COMMON$OPTIONAL)})`
-    : t(I18nKey.SETTINGS$NAME);
+  const label =
+    labelOverride ??
+    (isOptional
+      ? `${t(I18nKey.SETTINGS$NAME)} (${t(I18nKey.COMMON$OPTIONAL)})`
+      : t(I18nKey.SETTINGS$NAME));
+  const text = isInvalid
+    ? t(I18nKey.SETTINGS$PROFILE_NAME_RULE)
+    : (helpText ?? t(I18nKey.SETTINGS$PROFILE_NAME_RULE));
 
   return (
     <div className="flex flex-col gap-1">
@@ -47,7 +56,7 @@ export function ProfileNameInput({
         testId={ruleTestId}
         className={`text-xs ${isInvalid ? "text-red-400" : "text-gray-400"}`}
       >
-        {t(I18nKey.SETTINGS$PROFILE_NAME_RULE)}
+        {text}
       </Typography.Paragraph>
     </div>
   );

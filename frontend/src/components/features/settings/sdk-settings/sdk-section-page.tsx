@@ -135,6 +135,8 @@ export function SdkSectionPage({
   getInitialView,
   forceShowAdvancedView = false,
   allowAllView = true,
+  hideViewToggle = false,
+  viewOverride = null,
   trailingActions,
   testId = "sdk-section-settings-screen",
 }: {
@@ -171,6 +173,8 @@ export function SdkSectionPage({
   trailingActions?: React.ReactNode;
   forceShowAdvancedView?: boolean;
   allowAllView?: boolean;
+  hideViewToggle?: boolean;
+  viewOverride?: SettingsView | null;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -360,6 +364,8 @@ export function SdkSectionPage({
     return merged;
   }, [resolvedSources, dirtyBySource]);
 
+  const activeView = viewOverride ?? view;
+
   const handleFieldChange = React.useCallback(
     (fieldKey: string, nextValue: string | boolean) => {
       const sourceKey = fieldKeyToSource.get(fieldKey);
@@ -405,7 +411,7 @@ export function SdkSectionPage({
           schema,
           sourceValues,
           sourceDirty,
-          view,
+          activeView,
         );
         if (Object.keys(diff).length > 0) {
           const diffKey = PAYLOAD_DIFF_KEY[src.settingsSource];
@@ -422,7 +428,7 @@ export function SdkSectionPage({
         ? buildPayload(defaultPayload, {
             values: flatValues,
             dirty: flatDirty,
-            view,
+            view: activeView,
           })
         : defaultPayload;
     } catch (error) {
@@ -468,20 +474,22 @@ export function SdkSectionPage({
 
   return (
     <div data-testid={testId} className="h-full relative">
-      <ViewToggle
-        view={view}
-        setView={setView}
-        showAdvanced={showAdvanced}
-        showAll={showAll}
-        isDisabled={isReadOnly}
-        trailing={trailingActions}
-      />
+      {!hideViewToggle ? (
+        <ViewToggle
+          view={view}
+          setView={setView}
+          showAdvanced={showAdvanced}
+          showAll={showAll}
+          isDisabled={isReadOnly}
+          trailing={trailingActions}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-8 pb-20">
         {header?.({
           values: flatValues,
           isDisabled: isReadOnly,
-          view,
+          view: activeView,
           onChange: handleFieldChange,
         })}
 
@@ -494,7 +502,7 @@ export function SdkSectionPage({
             // `depends_on` works; in practice fields only depend on keys
             // within the same source.
             { ...flatValues, ...sourceValues },
-            view,
+            activeView,
             src.excludeKeys ?? EMPTY_EXCLUDE_KEYS,
           );
           return visibleSections.map((section) => (

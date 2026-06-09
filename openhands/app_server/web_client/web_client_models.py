@@ -57,6 +57,9 @@ class WebClientConfig(DiscriminatedUnionMixin):
     # like a provider default so it does not expose internal cluster URLs as
     # custom Advanced settings in OHE.
     managed_litellm_base_url: str | None = None
+    # Whether users may configure providers outside the managed/default model
+    # list. OHE can disable this from KOTS for governed installs.
+    allow_user_llm_configuration: bool = True
     acp_providers: list[ACPProviderConfig] = Field(default_factory=list)
     # Hostname of the Jira Data Center server when DC OAuth is configured, so the
     # configure form can pre-fill and lock the host field (the OAuth callback only

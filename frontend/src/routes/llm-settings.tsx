@@ -2,7 +2,10 @@ import React from "react";
 import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { FaChevronLeft } from "react-icons/fa6";
-import { ModelSelector } from "#/components/shared/modals/settings/model-selector";
+import {
+  CUSTOM_LLM_PROVIDER,
+  ModelSelector,
+} from "#/components/shared/modals/settings/model-selector";
 import { createPermissionGuard } from "#/utils/org/permission-guard";
 import { requireOrgDefaultsRedirect } from "#/utils/org/saas-redirect-to-org-defaults-guard";
 import { useAgentSettingsSchema } from "#/hooks/query/use-agent-settings-schema";
@@ -48,6 +51,7 @@ import { useOrgTypeAndAccess } from "#/hooks/use-org-type-and-access";
 import { useMe } from "#/hooks/query/use-me";
 import { usePermission } from "#/hooks/organizations/use-permissions";
 import {
+  allowsUserLlmConfiguration,
   isManagedLiteLlmBaseUrl,
   isOheManagedMode,
   normalizeBaseUrl,
@@ -167,6 +171,7 @@ export function LlmSettingsScreen({
   // in handleSaveSuccess. Reset on every form open so a stale name from the
   // previous Add doesn't leak in.
   const [profileName, setProfileName] = React.useState("");
+  const [profileNameWasEdited, setProfileNameWasEdited] = React.useState(false);
   // Snapshotted on form open so we can flag the form dirty when the user
   // edits *only* the name — the SDK section page tracks the LLM fields but
   // not the profile-name input that lives outside its schema.
@@ -188,14 +193,38 @@ export function LlmSettingsScreen({
 
   const isSaasMode = config?.app_mode === "saas";
   const isManagedMode = isOheManagedMode(config);
+  const allowUserLlmConfiguration = allowsUserLlmConfiguration(config);
   const managedLiteLlmBaseUrl = config?.managed_litellm_base_url?.trim();
+  const restrictToManagedProvider = isManagedMode && !allowUserLlmConfiguration;
 
   React.useEffect(() => {
     if (settings?.llm_model) {
+      const trimmedBaseUrl = settings.llm_base_url?.trim() ?? "";
+      const shouldSelectCustom =
+        isSaasMode &&
+        allowUserLlmConfiguration &&
+        trimmedBaseUrl.length > 0 &&
+        !isProviderDefaultBaseUrl(
+          settings.llm_model,
+          trimmedBaseUrl,
+          managedLiteLlmBaseUrl,
+        );
+
+      if (shouldSelectCustom) {
+        setSelectedProvider(CUSTOM_LLM_PROVIDER);
+        return;
+      }
+
       const { provider } = extractModelAndProvider(settings.llm_model);
       setSelectedProvider(provider || null);
     }
-  }, [settings?.llm_model]);
+  }, [
+    allowUserLlmConfiguration,
+    isSaasMode,
+    managedLiteLlmBaseUrl,
+    settings?.llm_base_url,
+    settings?.llm_model,
+  ]);
 
   React.useEffect(() => {
     const checkout = searchParams.get("checkout");
@@ -215,6 +244,16 @@ export function LlmSettingsScreen({
       ? I18nKey.SETTINGS$ORG_DEFAULTS_INFO
       : I18nKey.SETTINGS$PERSONAL_AGENT_INFO;
   }, [isSaasMode, scope]);
+
+  const maybeSyncProfileName = React.useCallback(
+    (model: string) => {
+      if (profileNameWasEdited) {
+        return;
+      }
+      setProfileName(deriveProfileNameFromModel(model) ?? "");
+    },
+    [profileNameWasEdited],
+  );
 
   const getInitialView = React.useCallback(
     (
@@ -282,17 +321,24 @@ export function LlmSettingsScreen({
       const derivedProvider = modelValue
         ? extractModelAndProvider(modelValue).provider || null
         : null;
-      const activeProvider =
-        view === "basic"
-          ? (selectedProvider ?? derivedProvider)
+      const isCustomProviderSelected = selectedProvider === CUSTOM_LLM_PROVIDER;
+      const shouldRenderCustomFields = isSaasMode
+        ? isCustomProviderSelected
+        : view !== "basic";
+      const activeProvider = !shouldRenderCustomFields
+        ? (selectedProvider ?? derivedProvider)
+        : isCustomProviderSelected
+          ? CUSTOM_LLM_PROVIDER
           : derivedProvider;
-      const shouldUseOpenHandsKey =
-        isSaasMode && activeProvider === "openhands";
+      const shouldHideApiKeyInput =
+        isSaasMode &&
+        activeProvider === "openhands" &&
+        !shouldRenderCustomFields;
       const showOpenHandsApiKeyHelp =
         modelValue.startsWith("openhands/") && !isManagedMode;
 
       const renderApiKeyInput = (testId: string, helpTestId: string) => {
-        if (shouldUseOpenHandsKey) {
+        if (shouldHideApiKeyInput) {
           return null;
         }
 
@@ -348,24 +394,46 @@ export function LlmSettingsScreen({
               ruleTestId="llm-profile-name-rule"
               value={profileName}
               placeholder={profileNamePlaceholder}
-              onChange={setProfileName}
+              label={t(I18nKey.SETTINGS$LLM_PROFILE_NAME)}
+              helpText={t(I18nKey.SETTINGS$LLM_PROFILE_NAME_HELP)}
+              onChange={(value) => {
+                setProfileName(value);
+                setProfileNameWasEdited(true);
+              }}
               isDisabled={isDisabled}
-              isOptional
             />
           ) : null}
 
-          {view === "basic" ? (
+          {!shouldRenderCustomFields ? (
             <div
               className="flex flex-col gap-6"
               data-testid="llm-settings-form-basic"
             >
               <ModelSelector
                 currentModel={modelValue || undefined}
+                selectedProviderOverride={selectedProvider ?? undefined}
+                managedProviderOnly={restrictToManagedProvider}
+                allowCustomProvider={isSaasMode && allowUserLlmConfiguration}
                 onChange={(provider, model) => {
                   setSelectedProvider(provider);
+                  if (provider === CUSTOM_LLM_PROVIDER) {
+                    return;
+                  }
+                  if (provider === "openhands" && isSaasMode) {
+                    const defaultBaseUrl = getSchemaFieldDefaultValue(
+                      schema,
+                      "llm.base_url",
+                    );
+                    onChange("llm.api_key", "");
+                    onChange(
+                      "llm.base_url",
+                      typeof defaultBaseUrl === "string" ? defaultBaseUrl : "",
+                    );
+                  }
                   const nextModel = buildModelId(provider, model);
                   if (nextModel) {
                     onChange("llm.model", nextModel);
+                    maybeSyncProfileName(nextModel);
                   }
                 }}
                 wrapperClassName="!flex-col !gap-6"
@@ -386,6 +454,19 @@ export function LlmSettingsScreen({
               className="flex flex-col gap-6"
               data-testid="llm-settings-form-advanced"
             >
+              {isSaasMode ? (
+                <ModelSelector
+                  currentModel={modelValue || undefined}
+                  selectedProviderOverride={CUSTOM_LLM_PROVIDER}
+                  allowCustomProvider
+                  onChange={(provider) => {
+                    setSelectedProvider(provider);
+                  }}
+                  wrapperClassName="!flex-col !gap-6"
+                  isDisabled={isDisabled}
+                />
+              ) : null}
+
               <SettingsInput
                 testId="llm-custom-model-input"
                 label={t(I18nKey.SETTINGS$CUSTOM_MODEL)}
@@ -393,7 +474,10 @@ export function LlmSettingsScreen({
                 className="w-full"
                 value={modelValue}
                 placeholder={defaultModel}
-                onChange={(value) => onChange("llm.model", value)}
+                onChange={(value) => {
+                  onChange("llm.model", value);
+                  maybeSyncProfileName(value);
+                }}
                 isDisabled={isDisabled}
               />
 
@@ -423,13 +507,18 @@ export function LlmSettingsScreen({
     },
     [
       infoMessageKey,
+      allowUserLlmConfiguration,
       isManagedMode,
       isSaasMode,
       defaultModel,
+      maybeSyncProfileName,
       profileName,
+      profileNameWasEdited,
       scope,
       selectedProvider,
+      schema,
       settings?.llm_api_key_set,
+      restrictToManagedProvider,
       canManageProfilesForScope,
       t,
     ],
@@ -457,20 +546,25 @@ export function LlmSettingsScreen({
       const derivedProvider = modelValue
         ? extractModelAndProvider(modelValue).provider || null
         : null;
+      const isCustomProviderSelected = selectedProvider === CUSTOM_LLM_PROVIDER;
       const activeProvider =
-        context.view === "basic"
+        context.view === "basic" && !isCustomProviderSelected
           ? (selectedProvider ?? derivedProvider)
-          : derivedProvider;
-      const shouldUseOpenHandsKey =
-        isSaasMode && activeProvider === "openhands";
+          : isCustomProviderSelected
+            ? CUSTOM_LLM_PROVIDER
+            : derivedProvider;
+      const shouldUseManagedKey =
+        isSaasMode &&
+        activeProvider === "openhands" &&
+        !isCustomProviderSelected;
 
       const llm = (agentSettings.llm ?? {}) as Record<string, unknown>;
-      if (shouldUseOpenHandsKey && llm.model !== undefined) {
+      if (shouldUseManagedKey) {
         llm.api_key = "";
         agentSettings.llm = llm;
       }
 
-      if (context.view === "basic") {
+      if (context.view === "basic" && !isCustomProviderSelected) {
         llm.base_url = getSchemaFieldDefaultValue(schema, "llm.base_url");
         agentSettings.llm = llm;
       }
@@ -485,7 +579,7 @@ export function LlmSettingsScreen({
 
       return { agent_settings_diff: agentSettings };
     },
-    [isSaasMode, schema, scope, selectedProvider],
+    [isSaasMode, schema, selectedProvider],
   );
 
   const handleSaveSuccess = React.useCallback(async () => {
@@ -550,6 +644,7 @@ export function LlmSettingsScreen({
     }
 
     setProfileName("");
+    setProfileNameWasEdited(false);
     setInitialProfileName("");
     setInitialViewHint(null);
     setShowProfiles(true);
@@ -568,7 +663,10 @@ export function LlmSettingsScreen({
   ]);
 
   const openForm = (view: SettingsView | null, name = "") => {
-    setProfileName(name);
+    setProfileName(
+      name || deriveProfileNameFromModel(settings?.llm_model ?? "") || "",
+    );
+    setProfileNameWasEdited(Boolean(name));
     setInitialProfileName(name);
     setInitialViewHint(view);
     setShowProfiles(false);
@@ -645,6 +743,14 @@ export function LlmSettingsScreen({
         onSaveSuccess={handleSaveSuccess}
         getInitialView={getInitialView}
         forceShowAdvancedView
+        hideViewToggle={isSaasMode}
+        viewOverride={
+          isSaasMode
+            ? selectedProvider === CUSTOM_LLM_PROVIDER
+              ? "advanced"
+              : "basic"
+            : null
+        }
         allowAllView={!isSaasMode}
         testId="llm-settings-screen"
       />

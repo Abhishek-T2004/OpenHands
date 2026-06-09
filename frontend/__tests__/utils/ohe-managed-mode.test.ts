@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allowsUserLlmConfiguration,
   isManagedLiteLlmBaseUrl,
   isOheManagedMode,
   normalizeBaseUrl,
@@ -58,6 +59,24 @@ describe("ohe managed mode helpers", () => {
         "https://custom.example/v1",
         "http://openhands-litellm:4000",
       ),
+    ).toBe(false);
+  });
+
+  it("allows user LLM configuration by default for backwards compatibility", () => {
+    expect(allowsUserLlmConfiguration(undefined)).toBe(true);
+    expect(
+      allowsUserLlmConfiguration({
+        app_mode: "saas",
+      } as WebClientConfig),
+    ).toBe(true);
+  });
+
+  it("respects an explicit false user LLM configuration flag", () => {
+    expect(
+      allowsUserLlmConfiguration({
+        app_mode: "saas",
+        allow_user_llm_configuration: false,
+      } as WebClientConfig),
     ).toBe(false);
   });
 });

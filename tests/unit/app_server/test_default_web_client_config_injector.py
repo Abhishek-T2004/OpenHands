@@ -683,3 +683,34 @@ class TestGetSlackEnabled:
             clear=True,
         ):
             assert _get_slack_enabled() is False
+
+
+class TestGetAllowUserLlmConfiguration:
+    """Test cases for _get_allow_user_llm_configuration helper function."""
+
+    def test_defaults_to_true_when_env_var_is_unset(self):
+        """User LLM configuration stays enabled unless explicitly disabled."""
+        from openhands.app_server.web_client.default_web_client_config_injector import (
+            _get_allow_user_llm_configuration,
+        )
+
+        with patch.dict(os.environ, {}, clear=True):
+            assert _get_allow_user_llm_configuration() is True
+
+    def test_returns_true_for_truthy_env_var(self):
+        """KOTS can explicitly enable user-configured LLM providers."""
+        from openhands.app_server.web_client.default_web_client_config_injector import (
+            _get_allow_user_llm_configuration,
+        )
+
+        with patch.dict(os.environ, {'OH_ALLOW_USER_LLM_CONFIGURATION': 'true'}):
+            assert _get_allow_user_llm_configuration() is True
+
+    def test_returns_false_for_false_env_var(self):
+        """KOTS can disable user-configured LLM providers for governed OHE installs."""
+        from openhands.app_server.web_client.default_web_client_config_injector import (
+            _get_allow_user_llm_configuration,
+        )
+
+        with patch.dict(os.environ, {'OH_ALLOW_USER_LLM_CONFIGURATION': 'false'}):
+            assert _get_allow_user_llm_configuration() is False

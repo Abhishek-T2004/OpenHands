@@ -125,6 +125,18 @@ def _get_managed_litellm_base_url() -> str | None:
     return url if url else None
 
 
+def _get_allow_user_llm_configuration() -> bool:
+    """Return whether users may configure non-managed LLM providers.
+
+    Defaults to True to preserve SaaS/OSS behavior. OHE/KOTS can set
+    OH_ALLOW_USER_LLM_CONFIGURATION=false to restrict the UI to default models.
+    """
+    value = os.getenv('OH_ALLOW_USER_LLM_CONFIGURATION', '').strip().lower()
+    if not value:
+        return True
+    return value in ('1', 'true', 'yes')
+
+
 def _get_jira_dc_oauth_host() -> str | None:
     """Hostname of the Jira Data Center server when DC OAuth is configured.
 
@@ -215,6 +227,9 @@ class DefaultWebClientConfigInjector(WebClientConfigInjector):
     managed_litellm_base_url: str | None = Field(
         default_factory=_get_managed_litellm_base_url
     )
+    allow_user_llm_configuration: bool = Field(
+        default_factory=_get_allow_user_llm_configuration
+    )
     jira_dc_oauth_host: str | None = Field(default_factory=_get_jira_dc_oauth_host)
     jira_dc_service_account_managed: bool = Field(
         default_factory=_is_jira_dc_service_account_managed
@@ -259,6 +274,7 @@ class DefaultWebClientConfigInjector(WebClientConfigInjector):
             provider_default_hosts=self.provider_default_hosts,
             slack_enabled=self.slack_enabled,
             managed_litellm_base_url=self.managed_litellm_base_url,
+            allow_user_llm_configuration=self.allow_user_llm_configuration,
             jira_dc_oauth_host=self.jira_dc_oauth_host,
             jira_dc_service_account_managed=self.jira_dc_service_account_managed,
             jira_dc_service_account_email=self.jira_dc_service_account_email,

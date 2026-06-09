@@ -41,3 +41,7 @@ export const isOheManagedMode = (
 
   return !CLOUD_LITELLM_PROXY_URLS.has(normalizeBaseUrl(managedLiteLlmBaseUrl));
 };
+
+export const allowsUserLlmConfiguration = (
+  config: WebClientConfig | null | undefined,
+) => config?.allow_user_llm_configuration ?? true;
