@@ -4963,6 +4963,23 @@
     "uk": "Ці стандартні налаштування організації застосовуються першими. Учасники все ще можуть додавати власні облікові дані або особисті перевизначення там, де це дозволено.",
     "ca": "Aquests valors predeterminats de l'organització s'apliquen primer. Els membres encara poden afegir les seves pròpies credencials o substitucions personals on estigui permès."
   },
+  "SETTINGS$ORG_DEFAULTS_MANAGED_ONLY_INFO": {
+    "en": "These organization defaults are applied first. Personal credentials and overrides are disabled for this OpenHands instance unless your administrator enables them.",
+    "ja": "これらの組織のデフォルト設定が最初に適用されます。このOpenHandsインスタンスでは、管理者が有効にしない限り、個人の認証情報や上書き設定は無効です。",
+    "zh-CN": "这些组织默认设置会首先应用。除非管理员启用，否则此 OpenHands 实例会禁用个人凭据和覆盖设置。",
+    "zh-TW": "這些組織預設設定會首先套用。除非管理員啟用，否則此 OpenHands 執行個體會停用個人憑證和覆蓋設定。",
+    "ko-KR": "이 조직 기본 설정이 먼저 적용됩니다. 관리자가 사용 설정하지 않는 한 이 OpenHands 인스턴스에서는 개인 자격 증명과 재정의가 비활성화됩니다.",
+    "no": "Disse organisasjonsstandardene brukes først. Personlige legitimasjoner og overstyringer er deaktivert for denne OpenHands-instansen med mindre administratoren aktiverer dem.",
+    "it": "Queste impostazioni predefinite dell'organizzazione vengono applicate per prime. Le credenziali personali e le sostituzioni sono disabilitate per questa istanza di OpenHands finché l'amministratore non le abilita.",
+    "pt": "Esses padrões da organização são aplicados primeiro. Credenciais pessoais e substituições ficam desativadas nesta instância do OpenHands, a menos que o administrador as habilite.",
+    "es": "Estos valores predeterminados de la organización se aplican primero. Las credenciales personales y las anulaciones están desactivadas en esta instancia de OpenHands a menos que tu administrador las habilite.",
+    "ar": "يتم تطبيق إعدادات المؤسسة الافتراضية أولاً. يتم تعطيل بيانات الاعتماد الشخصية والتجاوزات في مثيل OpenHands هذا ما لم يمكّنها المسؤول.",
+    "fr": "Ces paramètres par défaut de l'organisation sont appliqués en premier. Les identifiants personnels et les remplacements sont désactivés pour cette instance OpenHands sauf si votre administrateur les active.",
+    "tr": "Bu organizasyon varsayılanları önce uygulanır. Yöneticiniz etkinleştirmedikçe bu OpenHands örneğinde kişisel kimlik bilgileri ve geçersiz kılmalar devre dışıdır.",
+    "de": "Diese Organisationsstandards werden zuerst angewendet. Persönliche Anmeldedaten und Überschreibungen sind für diese OpenHands-Instanz deaktiviert, sofern Ihr Administrator sie nicht aktiviert.",
+    "uk": "Ці стандартні налаштування організації застосовуються першими. Особисті облікові дані та перевизначення вимкнено для цього екземпляра OpenHands, якщо адміністратор їх не ввімкне.",
+    "ca": "Aquests valors predeterminats de l'organització s'apliquen primer. Les credencials personals i les substitucions estan desactivades en aquesta instància d'OpenHands tret que l'administrador les activi."
+  },
   "SETTINGS$PERSONAL_AGENT_INFO": {
     "en": "These settings only affect your own work. Organization defaults still apply unless you override them here.",
     "ja": "これらの設定はあなた自身の作業にのみ影響します。ここで上書きしない限り、組織のデフォルト設定が引き続き適用されます。",

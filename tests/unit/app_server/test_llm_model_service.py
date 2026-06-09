@@ -38,7 +38,7 @@ class TestDefaultLLMModelServiceSearchModels:
     async def test_managed_openhands_models_are_verified(self, monkeypatch):
         monkeypatch.setenv(
             'OPENHANDS_MANAGED_LITELLM_MODELS',
-            'sonnet=provider-model, meta-llama/Llama-3.1-70B-Instruct',
+            'claude-sonnet-4-5-20250929, meta-llama/Llama-3.1-70B-Instruct',
         )
 
         service = DefaultLLMModelService()
@@ -48,7 +48,7 @@ class TestDefaultLLMModelServiceSearchModels:
         )
 
         models = {m.name: m for m in result.items}
-        assert models['sonnet'].verified is True
+        assert models['claude-sonnet-4-5-20250929'].verified is True
         assert models['meta-llama/Llama-3.1-70B-Instruct'].verified is True
 
     @pytest.mark.asyncio

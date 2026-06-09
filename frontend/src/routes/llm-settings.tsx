@@ -250,10 +250,13 @@ export function LlmSettingsScreen({
 
   const infoMessageKey = React.useMemo((): I18nKey | null => {
     if (!isSaasMode) return null;
-    return scope === "org"
-      ? I18nKey.SETTINGS$ORG_DEFAULTS_INFO
-      : I18nKey.SETTINGS$PERSONAL_AGENT_INFO;
-  }, [isSaasMode, scope]);
+    if (scope !== "org") {
+      return I18nKey.SETTINGS$PERSONAL_AGENT_INFO;
+    }
+    return restrictToManagedProvider
+      ? I18nKey.SETTINGS$ORG_DEFAULTS_MANAGED_ONLY_INFO
+      : I18nKey.SETTINGS$ORG_DEFAULTS_INFO;
+  }, [isSaasMode, restrictToManagedProvider, scope]);
 
   const maybeSyncProfileName = React.useCallback(
     (model: string) => {

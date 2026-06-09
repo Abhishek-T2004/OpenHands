@@ -115,7 +115,7 @@ class TestDefaultLiteLLMModel:
         with patch.dict(
             'os.environ',
             {
-                'OPENHANDS_MANAGED_LITELLM_MODELS': 'sonnet=anthropic-target, opus',
+                'OPENHANDS_MANAGED_LITELLM_MODELS': 'claude-sonnet-4-5, claude-opus-4-7',
                 'LITELLM_DEFAULT_MODEL': '',
             },
         ):
@@ -123,7 +123,10 @@ class TestDefaultLiteLLMModel:
 
             importlib.reload(constants_module)
 
-            assert constants_module.get_default_litellm_model() == 'litellm_proxy/sonnet'
+            assert (
+                constants_module.get_default_litellm_model()
+                == 'litellm_proxy/claude-sonnet-4-5'
+            )
 
     def test_explicit_litellm_default_model_takes_precedence(self):
         """Existing explicit default-model deployments keep their configured default."""
