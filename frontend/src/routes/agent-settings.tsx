@@ -86,7 +86,6 @@ export default function AgentSettingsScreen() {
     settings?.agent_settings_schema,
   );
 
-  const isAcpEnabled = !!config?.feature_flags?.enable_acp;
   const acpProviders = config?.acp_providers ?? EMPTY_ACP_PROVIDERS;
 
   // ── Sub-agents (OpenHands mode) ──────────────────────────────────────────
