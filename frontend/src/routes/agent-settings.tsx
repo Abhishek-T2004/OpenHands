@@ -86,6 +86,7 @@ export default function AgentSettingsScreen() {
     settings?.agent_settings_schema,
   );
 
+  const isAcpEnabled = !!config?.feature_flags?.enable_acp;
   const acpProviders = config?.acp_providers ?? EMPTY_ACP_PROVIDERS;
 
   // ── Sub-agents (OpenHands mode) ──────────────────────────────────────────
@@ -124,7 +125,7 @@ export default function AgentSettingsScreen() {
     lastInitializedSettingsRef.current = settings;
     const kind = settings.agent_settings?.agent_kind;
 
-    if (kind === "acp") {
+    if (kind === "acp" && isAcpEnabled) {
       setAgentType("acp");
       const tokens = [
         ...toStringArray(settings.agent_settings?.acp_command),
@@ -146,7 +147,7 @@ export default function AgentSettingsScreen() {
       setAcpModel("");
     }
     setIsDirty(false);
-  }, [settings, acpProviders, isConfigLoading]);
+  }, [settings, acpProviders, isAcpEnabled, isConfigLoading]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const isAcp = agentType === "acp";
@@ -242,35 +243,37 @@ export default function AgentSettingsScreen() {
   return (
     <div data-testid="agent-settings-screen" className="h-full relative">
       <div className="flex flex-col gap-8 pb-20">
-        {/* Agent-type selector */}
-        <section className="grid gap-4 xl:grid-cols-2">
-          <SettingsDropdownInput
-            testId="agent-type-selector"
-            name="agent-type"
-            label={t(I18nKey.SETTINGS$AGENT)}
-            items={[
-              {
-                key: "openhands",
-                label: t(I18nKey.SETTINGS$AGENT_TYPE_OPENHANDS),
-              },
-              { key: "acp", label: t(I18nKey.SETTINGS$AGENT_TYPE_ACP) },
-            ]}
-            selectedKey={agentType}
-            onSelectionChange={(key) => {
-              if (!key) return;
-              const newType = key as "openhands" | "acp";
-              setAgentType(newType);
-              if (newType === "acp" && !commandText) {
-                const preferred = acpProviders[0];
-                if (preferred) {
-                  setCommandText(formatCommand(preferred.default_command));
-                  setAcpModel(preferred.default_model || "");
+        {/* Agent-type selector — only when ACP feature flag is on */}
+        {isAcpEnabled && (
+          <section className="grid gap-4 xl:grid-cols-2">
+            <SettingsDropdownInput
+              testId="agent-type-selector"
+              name="agent-type"
+              label={t(I18nKey.SETTINGS$AGENT)}
+              items={[
+                {
+                  key: "openhands",
+                  label: t(I18nKey.SETTINGS$AGENT_TYPE_OPENHANDS),
+                },
+                { key: "acp", label: t(I18nKey.SETTINGS$AGENT_TYPE_ACP) },
+              ]}
+              selectedKey={agentType}
+              onSelectionChange={(key) => {
+                if (!key) return;
+                const newType = key as "openhands" | "acp";
+                setAgentType(newType);
+                if (newType === "acp" && !commandText) {
+                  const preferred = acpProviders[0];
+                  if (preferred) {
+                    setCommandText(formatCommand(preferred.default_command));
+                    setAcpModel(preferred.default_model || "");
+                  }
                 }
-              }
-              setIsDirty(true);
-            }}
-          />
-        </section>
+                setIsDirty(true);
+              }}
+            />
+          </section>
+        )}
 
         {/* OpenHands: sub-agents toggle */}
         {!isAcp && (
