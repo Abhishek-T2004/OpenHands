@@ -451,6 +451,110 @@ def org_with_multiple_members_fixture(session_maker):
 
 
 @pytest.mark.asyncio
+async def test_load_canonicalizes_legacy_litellm_proxy_active_llm(
+    async_session_maker, org_with_multiple_members_fixture
+):
+    from sqlalchemy import update
+    from storage.org_member import OrgMember
+    from storage.user import User
+
+    fixture = org_with_multiple_members_fixture
+    admin_user_id = fixture['admin_user_id']
+    org_id = fixture['org_id']
+
+    async with async_session_maker() as session:
+        await session.execute(
+            update(OrgMember)
+            .where(OrgMember.org_id == org_id, OrgMember.user_id == admin_user_id)
+            .values(
+                agent_settings_diff={
+                    'llm': {
+                        'model': 'litellm_proxy/claude-opus-4-8',
+                        'base_url': LITE_LLM_API_URL,
+                    },
+                }
+            )
+        )
+        await session.execute(
+            update(User)
+            .where(User.id == admin_user_id)
+            .values(enable_sound_notifications=False)
+        )
+        await session.commit()
+
+    store = SaasSettingsStore(str(admin_user_id))
+    with (
+        patch('storage.saas_settings_store.a_session_maker', async_session_maker),
+        patch('storage.user_store.a_session_maker', async_session_maker),
+        patch('storage.org_store.a_session_maker', async_session_maker),
+    ):
+        loaded = await store.load()
+
+    assert loaded is not None
+    assert loaded.agent_settings.llm.model == 'openhands/claude-opus-4-8'
+    assert loaded.agent_settings.llm.base_url is None
+
+
+@pytest.mark.asyncio
+async def test_load_canonicalizes_legacy_litellm_proxy_llm_profiles(
+    async_session_maker, org_with_multiple_members_fixture
+):
+    from sqlalchemy import update
+    from storage.org import Org
+    from storage.user import User
+
+    fixture = org_with_multiple_members_fixture
+    admin_user_id = fixture['admin_user_id']
+    org_id = fixture['org_id']
+
+    async with async_session_maker() as session:
+        await session.execute(
+            update(Org)
+            .where(Org.id == org_id)
+            .values(
+                llm_profiles={
+                    'profiles': {
+                        'legacy': {
+                            'model': 'litellm_proxy/claude-opus-4-8',
+                            'base_url': LITE_LLM_API_URL,
+                        },
+                        'custom': {
+                            'model': 'litellm_proxy/custom-alias',
+                            'base_url': LITE_LLM_API_URL,
+                        },
+                    },
+                    'active': 'legacy',
+                }
+            )
+        )
+        await session.execute(
+            update(User)
+            .where(User.id == admin_user_id)
+            .values(enable_sound_notifications=False)
+        )
+        await session.commit()
+
+    store = SaasSettingsStore(str(admin_user_id))
+    with (
+        patch('storage.saas_settings_store.a_session_maker', async_session_maker),
+        patch('storage.user_store.a_session_maker', async_session_maker),
+        patch('storage.org_store.a_session_maker', async_session_maker),
+    ):
+        loaded = await store.load()
+
+    assert loaded is not None
+    assert loaded.llm_profiles.active == 'legacy'
+
+    legacy = loaded.llm_profiles.require('legacy')
+    assert legacy.model == 'openhands/claude-opus-4-8'
+    assert legacy.base_url is None
+
+    custom = loaded.llm_profiles.require('custom')
+    assert custom.model == 'litellm_proxy/custom-alias'
+    assert custom.base_url == LITE_LLM_API_URL
+
+
+@pytest.mark.asyncio
 async def test_store_updates_org_defaults_and_all_members_for_shared_keys(
     session_maker, async_session_maker, org_with_multiple_members_fixture
 ):
@@ -539,10 +643,9 @@ async def test_store_keeps_openhands_managed_keys_member_specific(
     with session_maker() as session:
         org = session.execute(select(Org).where(Org.id == org_id)).scalars().first()
         assert org is not None
-        # Settings normalizes openhands/ → litellm_proxy/ during construction
+        # Settings keeps the public openhands/ provider prefix in persisted data
         assert (
-            org.agent_settings['llm']['model']
-            == 'litellm_proxy/claude-opus-4-5-20251101'
+            org.agent_settings['llm']['model'] == 'openhands/claude-opus-4-5-20251101'
         )
         assert org.agent_settings['llm']['base_url'] == LITE_LLM_API_URL
         assert org.conversation_settings['max_iterations'] == 75
@@ -568,7 +671,7 @@ async def test_store_keeps_openhands_managed_keys_member_specific(
         for member in members.values():
             assert (
                 member.agent_settings_diff['llm']['model']
-                == 'litellm_proxy/claude-opus-4-5-20251101'
+                == 'openhands/claude-opus-4-5-20251101'
             )
             assert member.agent_settings_diff['llm']['base_url'] == LITE_LLM_API_URL
             assert member.conversation_settings_diff['max_iterations'] == 75
@@ -943,6 +1046,65 @@ async def test_load_with_null_or_empty_llm_profiles_seeds_default_profile(
     assert loaded.llm_profiles.active == 'Default'
     default = loaded.llm_profiles.require('Default')
     assert default.model == 'anthropic/claude-sonnet-4-5-20250929'
+
+
+@pytest.mark.asyncio
+async def test_load_persists_seeded_default_profile_onto_org(
+    async_session_maker, org_with_multiple_members_fixture
+):
+    """The seeded Default profile must be written back to org.llm_profiles.
+
+    The seed is otherwise in-memory only, so the org-profiles management API
+    (which reads org.llm_profiles directly) would still see an empty list.
+    load() backfills it once so the user's last LLM becomes a real stored
+    profile on first use of LLM profiles.
+    """
+    from sqlalchemy import select, update
+    from storage.org import Org
+
+    fixture = org_with_multiple_members_fixture
+    admin_user_id = fixture['admin_user_id']
+    org_id = fixture['org_id']
+    admin_store = SaasSettingsStore(str(admin_user_id))
+
+    seed_settings = _make_settings(
+        model='anthropic/claude-sonnet-4-5-20250929',
+        api_key='seed-key',
+        base_url='https://api.anthropic.com/v1',
+    )
+    with patch('storage.saas_settings_store.a_session_maker', async_session_maker):
+        await admin_store.store(seed_settings)
+
+    # Simulate a pre-migration org: no profiles stored yet.
+    async with async_session_maker() as session:
+        await session.execute(
+            update(Org).where(Org.id == org_id).values(llm_profiles=None)
+        )
+        await session.commit()
+
+    with (
+        patch('storage.saas_settings_store.a_session_maker', async_session_maker),
+        patch('storage.user_store.a_session_maker', async_session_maker),
+        patch('storage.org_store.a_session_maker', async_session_maker),
+    ):
+        await admin_store.load()
+
+    async with async_session_maker() as session:
+        org = (
+            (await session.execute(select(Org).where(Org.id == org_id)))
+            .scalars()
+            .first()
+        )
+
+    assert org.llm_profiles is not None
+    assert set(org.llm_profiles['profiles'].keys()) == {'Default'}
+    assert org.llm_profiles['active'] == 'Default'
+    persisted_default = org.llm_profiles['profiles']['Default']
+    assert persisted_default['model'] == 'anthropic/claude-sonnet-4-5-20250929'
+    assert persisted_default['base_url'] == 'https://api.anthropic.com/v1'
+    # API key from the legacy config must survive the round-trip so the user
+    # doesn't have to re-enter it after the profiles upgrade.
+    assert persisted_default['api_key'] == 'seed-key'
 
 
 @pytest.mark.asyncio
