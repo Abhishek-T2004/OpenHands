@@ -93,6 +93,91 @@ def _get_instance_default_marketplaces() -> list[dict]:
 
     return marketplaces
 
+
+async def _get_org_marketplaces(
+    user_id: str | None = None,
+) -> list[dict]:
+    """Get organization-level marketplaces from the database.
+
+    This is only available in enterprise mode. Returns empty list in OSS mode.
+
+    Args:
+        user_id: The user ID to get org for
+
+    Returns:
+        List of marketplace dictionaries from org extension_settings
+    """
+    # Try to get org marketplaces from enterprise service
+    # This is a placeholder - in enterprise, this would query the Org model
+    # For now, return empty list and let enterprise override this function
+    return []
+
+
+def _merge_marketplaces(
+    instance_marketplaces: list[dict],
+    org_marketplaces: list[dict],
+    user_marketplaces: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Merge marketplaces from different scopes with proper precedence.
+
+    Composition order (additive): Instance -> Org -> User
+    Each level can add more marketplaces, but user overrides earlier definitions.
+
+    Args:
+        instance_marketplaces: From INSTANCE_DEFAULT_MARKETPLACES env var
+        org_marketplaces: From org extension_settings
+        user_marketplaces: From user registered_marketplaces
+
+    Returns:
+        Tuple of (inherited_marketplaces, personal_marketplaces)
+        inherited_marketplaces includes instance + org (read-only)
+        personal_marketplaces is user-defined (editable)
+    """
+    inherited: list[dict] = []
+    personal: list[dict] = []
+
+    # Build lookup by source for deduplication
+    # User settings take precedence over org, org over instance
+    seen_sources: set[str] = set()
+
+    # Instance defaults first (lowest priority)
+    for mp in instance_marketplaces:
+        source = mp.get('source', '')
+        if source and source not in seen_sources:
+            inherited.append({**mp, 'scope': 'instance'})
+            seen_sources.add(source)
+
+    # Org settings (override instance)
+    for mp in org_marketplaces:
+        source = mp.get('source', '')
+        if source and source not in seen_sources:
+            inherited.append({**mp, 'scope': 'org'})
+            seen_sources.add(source)
+        elif source in seen_sources:
+            # Override: update existing with org values
+            for i, imp in enumerate(inherited):
+                if imp.get('source') == source:
+                    inherited[i] = {**imp, **mp, 'scope': 'org'}
+                    break
+
+    # User settings (highest priority) - these go to personal list
+    for mp in user_marketplaces:
+        source = mp.get('source', '')
+        if source and source not in seen_sources:
+            personal.append({**mp, 'scope': 'personal'})
+            seen_sources.add(source)
+        elif source in seen_sources:
+            # User is modifying an existing marketplace - add to personal
+            # and mark as overridden in inherited
+            personal.append({**mp, 'scope': 'personal'})
+            # Update inherited to show user override
+            for i, imp in enumerate(inherited):
+                if imp.get('source') == source:
+                    inherited[i] = {**imp, 'scope': 'personal', 'overridden': True}
+                    break
+
+    return inherited, personal
+
 # Create router with /api/v1/settings prefix
 router = APIRouter(
     prefix='/settings',
@@ -196,10 +281,19 @@ async def load_settings(
         settings_with_token_data.search_api_key = None
         settings_with_token_data.sandbox_api_key = None
 
-        # Add inherited marketplaces from instance defaults
+        # Marketplace composition: Instance -> Org -> User
+        user_id = getattr(settings, 'user_id', None)
         instance_defaults = _get_instance_default_marketplaces()
-        if instance_defaults:
-            settings_with_token_data.inherited_marketplaces = instance_defaults  # type: ignore[assignment]
+        org_marketplaces = await _get_org_marketplaces(user_id)
+        user_marketplaces = settings.registered_marketplaces or []
+
+        # Merge marketplaces with proper precedence
+        inherited, personal = _merge_marketplaces(
+            instance_defaults, org_marketplaces, user_marketplaces
+        )
+
+        settings_with_token_data.inherited_marketplaces = inherited  # type: ignore[assignment]
+        settings_with_token_data.registered_marketplaces = personal  # type: ignore[assignment]
 
         return settings_with_token_data
     except Exception as e:

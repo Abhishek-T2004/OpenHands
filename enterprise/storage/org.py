@@ -75,6 +75,11 @@ class Org(Base):
     # Marks the bootstrapped default org on OHE installs; a partial unique
     # index allows at most one default org per install.
     is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Marketplace registrations at org level for plugin resolution
+    # Composable with instance defaults and user personal marketplaces
+    extension_settings: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True
+    )
 
     # Relationships
     org_members: Mapped[list['OrgMember']] = relationship(
