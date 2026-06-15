@@ -56,6 +56,43 @@ LITE_LLM_API_URL = os.environ.get(
     'LITE_LLM_API_URL', 'https://llm-proxy.app.all-hands.dev'
 )
 
+
+def _get_instance_default_marketplaces() -> list[dict]:
+    """Get instance-level default marketplaces from environment variable.
+
+    Format: comma-separated list of marketplace definitions
+    Each definition: source[:name[:ref[:repo_path]]]
+    Example: github:openhands/extensions:default:main:marketplaces/default
+    """
+    env_value = os.environ.get('INSTANCE_DEFAULT_MARKETPLACES', '')
+    if not env_value:
+        return []
+
+    marketplaces = []
+    for definition in env_value.split(','):
+        definition = definition.strip()
+        if not definition:
+            continue
+
+        parts = definition.split(':')
+        source = parts[0]
+        name = parts[1] if len(parts) > 1 else None
+        ref = parts[2] if len(parts) > 2 else None
+        repo_path = parts[3] if len(parts) > 3 else None
+
+        marketplace = {'source': source}
+        if name:
+            marketplace['name'] = name
+        if ref:
+            marketplace['ref'] = ref
+        if repo_path:
+            marketplace['repo_path'] = repo_path
+        marketplace['auto_load'] = 'all'
+
+        marketplaces.append(marketplace)
+
+    return marketplaces
+
 # Create router with /api/v1/settings prefix
 router = APIRouter(
     prefix='/settings',
@@ -158,6 +195,12 @@ async def load_settings(
         resp_llm.api_key = None
         settings_with_token_data.search_api_key = None
         settings_with_token_data.sandbox_api_key = None
+
+        # Add inherited marketplaces from instance defaults
+        instance_defaults = _get_instance_default_marketplaces()
+        if instance_defaults:
+            settings_with_token_data.inherited_marketplaces = instance_defaults  # type: ignore[assignment]
+
         return settings_with_token_data
     except Exception as e:
         logger.warning(f'Invalid token: {e}')

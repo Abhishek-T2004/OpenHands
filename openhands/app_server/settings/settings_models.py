@@ -156,6 +156,16 @@ class Settings(BaseModel):
             'See MarketplaceRegistration for details.'
         ),
     )
+    # Inherited marketplaces from instance/org level (read-only for user)
+    # This is computed at runtime from environment variables and org settings
+    inherited_marketplaces: list[MarketplaceRegistration] = Field(
+        default_factory=list,
+        description=(
+            'Marketplaces inherited from instance or organization level. '
+            'These are read-only and cannot be modified by the user. '
+            'Computed at runtime: Instance defaults + Org defaults.'
+        ),
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 

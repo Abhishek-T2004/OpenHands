@@ -112,6 +112,18 @@ export type SkillInfo = {
 
 export type SettingsScope = "personal" | "org";
 
+export type MarketplaceRegistration = {
+  name: string;
+  source: string;
+  ref?: string | null;
+  repo_path?: string | null;
+  auto_load?: "all" | null;
+};
+
+export type MarketplaceWithScope = MarketplaceRegistration & {
+  scope: "instance" | "org" | "personal";
+};
+
 export type Settings = {
   llm_model: string;
   llm_base_url: string;
@@ -146,4 +158,6 @@ export type Settings = {
   conversation_settings_schema?: SettingsSchema | null;
   conversation_settings?: Record<string, SettingsValue> | null;
   sandbox_grouping_strategy?: SandboxGroupingStrategy;
+  registered_marketplaces?: MarketplaceRegistration[];
+  inherited_marketplaces?: MarketplaceWithScope[];
 };

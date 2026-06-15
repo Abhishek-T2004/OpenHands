@@ -26858,5 +26858,107 @@
     "uk": "Запрошення скопійовано",
     "zh-CN": "邀请链接已复制",
     "zh-TW": "邀請連結已複製"
+  },
+  "SETTINGS$MARKETPLACE_TITLE": {
+    "en": "Plugin Marketplaces"
+  },
+  "SETTINGS$MARKETPLACE_DESCRIPTION": {
+    "en": "Configure which plugin marketplaces are available. Instance and organization marketplaces are inherited and cannot be modified."
+  },
+  "SETTINGS$MARKETPLACE_INHERITED_TITLE": {
+    "en": "Inherited Marketplaces"
+  },
+  "SETTINGS$MARKETPLACE_PERSONAL_TITLE": {
+    "en": "Personal Marketplaces"
+  },
+  "SETTINGS$MARKETPLACE_ADD": {
+    "en": "Add Marketplace"
+  },
+  "SETTINGS$MARKETPLACE_ADD_TITLE": {
+    "en": "Add Marketplace"
+  },
+  "SETTINGS$MARKETPLACE_EDIT_TITLE": {
+    "en": "Edit Marketplace"
+  },
+  "SETTINGS$MARKETPLACE_DELETE_TITLE": {
+    "en": "Delete Marketplace"
+  },
+  "SETTINGS$MARKETPLACE_SOURCE": {
+    "en": "Source"
+  },
+  "SETTINGS$MARKETPLACE_SOURCE_PLACEHOLDER": {
+    "en": "github:owner/repo"
+  },
+  "SETTINGS$MARKETPLACE_SOURCE_HELP": {
+    "en": "Format: github:owner/repo, git URL, or local path"
+  },
+  "SETTINGS$MARKETPLACE_NAME": {
+    "en": "Name"
+  },
+  "SETTINGS$MARKETPLACE_NAME_PLACEHOLDER": {
+    "en": "my-marketplace"
+  },
+  "SETTINGS$MARKETPLACE_NAME_HELP": {
+    "en": "Optional. Auto-generated from source if empty."
+  },
+  "SETTINGS$MARKETPLACE_REF": {
+    "en": "Ref"
+  },
+  "SETTINGS$MARKETPLACE_REF_PLACEHOLDER": {
+    "en": "branch, tag, or commit"
+  },
+  "SETTINGS$MARKETPLACE_REF_HELP": {
+    "en": "Optional. Branch, tag, or commit SHA."
+  },
+  "SETTINGS$MARKETPLACE_REPO_PATH": {
+    "en": "Repo Path"
+  },
+  "SETTINGS$MARKETPLACE_REPO_PATH_PLACEHOLDER": {
+    "en": "marketplaces/plugins"
+  },
+  "SETTINGS$MARKETPLACE_REPO_PATH_HELP": {
+    "en": "Optional. Subdirectory for marketplace within repository."
+  },
+  "SETTINGS$MARKETPLACE_AUTO_LOAD": {
+    "en": "Auto-load"
+  },
+  "SETTINGS$MARKETPLACE_AUTO_LOAD_HELP": {
+    "en": "Load plugins at conversation start"
+  },
+  "SETTINGS$MARKETPLACE_ENABLED": {
+    "en": "Enabled"
+  },
+  "SETTINGS$MARKETPLACE_DISABLED": {
+    "en": "Disabled"
+  },
+  "SETTINGS$MARKETPLACE_SCOPE_INSTANCE": {
+    "en": "Instance"
+  },
+  "SETTINGS$MARKETPLACE_SCOPE_ORG": {
+    "en": "Organization"
+  },
+  "SETTINGS$MARKETPLACE_SCOPE_PERSONAL": {
+    "en": "Personal"
+  },
+  "SETTINGS$MARKETPLACE_NO_PERSONAL": {
+    "en": "No personal marketplaces configured"
+  },
+  "SETTINGS$MARKETPLACE_ADD_FIRST": {
+    "en": "Add Your First Marketplace"
+  },
+  "SETTINGS$MARKETPLACE_DELETE_CONFIRM": {
+    "en": "Delete this marketplace?"
+  },
+  "SETTINGS$MARKETPLACE_DELETE_MESSAGE": {
+    "en": "This will remove \"{{name}}\" from your personal marketplaces. This action cannot be undone."
+  },
+  "SETTINGS$MARKETPLACE_SAVE": {
+    "en": "Save"
+  },
+  "SETTINGS$MARKETPLACE_CANCEL": {
+    "en": "Cancel"
+  },
+  "SETTINGS$MARKETPLACE_DELETE": {
+    "en": "Delete"
   }
 }
