@@ -1484,6 +1484,10 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             else:
                 effective_suffix = web_host_context
 
+        effective_suffix = self._append_shallow_clone_guidance(
+            effective_suffix, selected_repository, self._git_full_clone_enabled(user)
+        )
+
         # --- tools ----------------------------------------------------------
         agent_definitions: list[Any] = []
         if agent_type == AgentType.PLAN:
@@ -1759,6 +1763,11 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
                 update={'api_key': None, 'base_url': None}
             ),
         }
+        system_message_suffix = self._append_shallow_clone_guidance(
+            system_message_suffix,
+            selected_repository,
+            self._git_full_clone_enabled(user),
+        )
         if system_message_suffix:
             settings_update['agent_context'] = AgentContext(
                 system_message_suffix=system_message_suffix

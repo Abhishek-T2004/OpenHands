@@ -271,6 +271,19 @@ def test_settings_update_batch():
     assert settings.conversation_settings.max_iterations == 200
 
 
+def test_git_full_clone_setting_defaults_off_and_updates():
+    settings = Settings()
+
+    assert settings.git_full_clone is False
+
+    settings.update({'git_full_clone': True})
+
+    assert settings.git_full_clone is True
+    assert (
+        Settings.model_validate(settings.model_dump(mode='json')).git_full_clone is True
+    )
+
+
 # ── LLM profiles: Settings-integration tests ────────────────────────
 # Pure LLMProfiles behaviour lives in test_llm_profiles.py.
 

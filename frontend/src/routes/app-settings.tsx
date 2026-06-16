@@ -66,6 +66,8 @@ function AppSettingsScreen() {
     React.useState(false);
   const [gitUserEmailHasChanged, setGitUserEmailHasChanged] =
     React.useState(false);
+  const [gitFullCloneHasChanged, setGitFullCloneHasChanged] =
+    React.useState(false);
 
   const formAction = (formData: FormData) => {
     const languageLabel = formData.get("language-input")?.toString();
@@ -102,6 +104,8 @@ function AppSettingsScreen() {
     const gitUserEmail =
       formData.get("git-user-email-input")?.toString() ||
       DEFAULT_SETTINGS.git_user_email;
+    const gitFullClone =
+      formData.get("git-full-clone-switch")?.toString() === "on";
 
     saveSettings(
       {
@@ -114,6 +118,7 @@ function AppSettingsScreen() {
         max_budget_per_task: maxBudgetPerTask,
         git_user_name: gitUserName,
         git_user_email: gitUserEmail,
+        git_full_clone: gitFullClone,
       },
       {
         onSuccess: () => {
@@ -134,6 +139,7 @@ function AppSettingsScreen() {
           setMaxBudgetPerTaskHasChanged(false);
           setGitUserNameHasChanged(false);
           setGitUserEmailHasChanged(false);
+          setGitFullCloneHasChanged(false);
         },
       },
     );
@@ -203,6 +209,12 @@ function AppSettingsScreen() {
     setGitUserEmailHasChanged(value !== currentValue);
   };
 
+  const checkIfGitFullCloneHasChanged = (checked: boolean) => {
+    const currentValue =
+      settings?.git_full_clone ?? DEFAULT_SETTINGS.git_full_clone;
+    setGitFullCloneHasChanged(checked !== currentValue);
+  };
+
   const formIsClean =
     !languageInputHasChanged &&
     !analyticsSwitchHasChanged &&
@@ -212,7 +224,8 @@ function AppSettingsScreen() {
     !sandboxGroupingStrategyHasChanged &&
     !maxBudgetPerTaskHasChanged &&
     !gitUserNameHasChanged &&
-    !gitUserEmailHasChanged;
+    !gitUserEmailHasChanged &&
+    !gitFullCloneHasChanged;
 
   const shouldBeLoading = !settings || isLoading || isPending;
 
@@ -334,6 +347,19 @@ function AppSettingsScreen() {
                 placeholder={t(I18nKey.SETTINGS$GIT_EMAIL_PLACEHOLDER)}
                 className="w-full max-w-[680px]"
               />
+              <div className="flex flex-col gap-1 max-w-[680px]">
+                <SettingsSwitch
+                  testId="git-full-clone-switch"
+                  name="git-full-clone-switch"
+                  defaultIsToggled={!!settings.git_full_clone}
+                  onToggle={checkIfGitFullCloneHasChanged}
+                >
+                  {t(I18nKey.SETTINGS$GIT_FULL_CLONE)}
+                </SettingsSwitch>
+                <p className="text-xs text-tertiary pl-12">
+                  {t(I18nKey.SETTINGS$GIT_FULL_CLONE_DESCRIPTION)}
+                </p>
+              </div>
             </div>
           </div>
         </div>

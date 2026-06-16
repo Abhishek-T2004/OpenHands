@@ -48,6 +48,9 @@ from openhands.sdk.workspace.remote.async_remote_workspace import AsyncRemoteWor
 _logger = logging.getLogger(__name__)
 PRE_COMMIT_HOOK = '.git/hooks/pre-commit'
 PRE_COMMIT_LOCAL = '.git/hooks/pre-commit.local'
+SHALLOW_CLONE_AGENT_GUIDANCE = """<REPOSITORY_GIT_CONTEXT>
+The selected repository was cloned with a shallow Git history (`git clone --depth 1`). Git history may be incomplete. If the task requires older commits, tags, merge bases, historical blame, changelog generation, or checking out older commits, run `git fetch --deepen=<n>` or `git fetch --unshallow --tags` in the repository before using those history-dependent operations.
+</REPOSITORY_GIT_CONTEXT>"""
 
 
 def get_project_dir(
@@ -316,6 +319,39 @@ class AppConversationServiceBase(AppConversationService, ABC):
         except Exception as e:
             _logger.warning(f'Failed to configure git user settings: {e}')
 
+    @staticmethod
+    def _append_system_message_suffix(
+        system_message_suffix: str | None, suffix_to_append: str
+    ) -> str:
+        if system_message_suffix:
+            return f'{system_message_suffix}\n\n{suffix_to_append}'
+        return suffix_to_append
+
+    def _append_shallow_clone_guidance(
+        self,
+        system_message_suffix: str | None,
+        selected_repository: str | None,
+        git_full_clone: bool,
+    ) -> str | None:
+        if not selected_repository or git_full_clone:
+            return system_message_suffix
+        return self._append_system_message_suffix(
+            system_message_suffix, SHALLOW_CLONE_AGENT_GUIDANCE
+        )
+
+    @staticmethod
+    def _git_clone_options(selected_branch: str | None, git_full_clone: bool) -> str:
+        if git_full_clone:
+            return ''
+        options = ['--depth 1']
+        if selected_branch:
+            options.extend(['--branch', shlex.quote(selected_branch)])
+        return ' ' + ' '.join(options)
+
+    @staticmethod
+    def _git_full_clone_enabled(user_info: Any) -> bool:
+        return getattr(user_info, 'git_full_clone', False) is True
+
     async def clone_or_init_git_repo(
         self,
         task: AppConversationStartTask,
@@ -334,6 +370,17 @@ class AppConversationServiceBase(AppConversationService, ABC):
 
         # Configure git user settings from user preferences
         await self._configure_git_user_settings(workspace)
+
+        git_full_clone = False
+        try:
+            git_full_clone = self._git_full_clone_enabled(
+                await self.user_context.get_user_info()
+            )
+        except Exception as e:
+            _logger.warning(f'Failed to read git clone settings: {e}')
+
+        if request.selected_repository and request.selected_branch:
+            ensure_valid_git_branch_name(request.selected_branch)
 
         if not request.selected_repository:
             if self.init_git_in_empty_workspace:
@@ -365,16 +412,19 @@ class AppConversationServiceBase(AppConversationService, ABC):
         )
 
         # Clone the repo - this is the slow part!
+        clone_options = self._git_clone_options(request.selected_branch, git_full_clone)
         if azure_devops_bearer_token:
             auth_header = shlex.quote(
                 f'Authorization: Bearer {azure_devops_bearer_token}'
             )
             clone_command = (
-                f'git -c http.extraheader={auth_header} clone '
+                f'git -c http.extraheader={auth_header} clone{clone_options} '
                 f'{quoted_remote_repo_url} {quoted_dir_name}'
             )
         else:
-            clone_command = f'git clone {quoted_remote_repo_url} {quoted_dir_name}'
+            clone_command = (
+                f'git clone{clone_options} {quoted_remote_repo_url} {quoted_dir_name}'
+            )
         result = await workspace.execute_command(
             clone_command, workspace.working_dir, 120
         )
@@ -390,7 +440,6 @@ class AppConversationServiceBase(AppConversationService, ABC):
 
         # Checkout the appropriate branch
         if request.selected_branch:
-            ensure_valid_git_branch_name(request.selected_branch)
             checkout_command = f'git checkout {shlex.quote(request.selected_branch)}'
         else:
             # Generate a random branch name to avoid conflicts

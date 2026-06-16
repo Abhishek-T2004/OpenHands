@@ -73,6 +73,8 @@ def _build_test_user_agent_settings(user: SimpleNamespace) -> OpenHandsAgentSett
 
 
 class _TestUserInfo(SimpleNamespace):
+    git_full_clone = False
+
     @property
     def agent_settings(self) -> OpenHandsAgentSettings:
         override = getattr(self, '_agent_settings_override', None)
@@ -186,6 +188,7 @@ class TestLiveStatusAppConversationService:
             search_api_key=None,
             mcp_config=None,
             disabled_skills=[],
+            git_full_clone=False,
         )
 
         # Mock sandbox
@@ -1025,13 +1028,14 @@ class TestLiveStatusAppConversationService:
         assert result.agent.llm.model == 'gpt-4'
         # Secrets are injected via agent_context
         assert result.agent.agent_context.secrets == mock_secrets
-        # System message suffix includes the original suffix and web host context
-        assert 'Test suffix' in result.agent.agent_context.system_message_suffix
-        assert '<HOST>' in result.agent.agent_context.system_message_suffix
-        assert (
-            'https://test.example.com'
-            in result.agent.agent_context.system_message_suffix
-        )
+        # System message suffix includes the original suffix, web host context,
+        # and shallow-clone guidance.
+        suffix = result.agent.agent_context.system_message_suffix
+        assert 'Test suffix' in suffix
+        assert '<HOST>' in suffix
+        assert 'https://test.example.com' in suffix
+        assert 'shallow Git history' in suffix
+        assert 'git fetch --unshallow --tags' in suffix
         # Workspace points to the repo subdirectory
         assert result.workspace.working_dir == '/test/dir/repo'
 
