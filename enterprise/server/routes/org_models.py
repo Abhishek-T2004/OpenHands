@@ -10,11 +10,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from server.constants import (
-    DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES,
-    DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
-    LITE_LLM_API_URL,
-)
+from server.constants import LITE_LLM_API_URL
 from storage.org import Org
 from storage.org_member import OrgMember
 from storage.role import Role
@@ -188,7 +184,6 @@ class OrgResponse(BaseModel):
     v1_enabled: bool | None = None
     credits: float | None = None
     is_personal: bool = False
-    max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @classmethod
     def from_org(
@@ -219,13 +214,6 @@ class OrgResponse(BaseModel):
             v1_enabled=org.v1_enabled,
             credits=credits,
             is_personal=str(org.id) == user_id if user_id else False,
-            max_concurrent_sandboxes=org.max_concurrent_sandboxes
-            if org.max_concurrent_sandboxes is not None
-            else (
-                DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
-                if str(org.id) == user_id
-                else DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES
-            ),
         )
 
 
@@ -264,7 +252,6 @@ class OrgUpdate(BaseModel):
     llm_api_key: str | None = None
     agent_settings_diff: dict[str, Any] | None = None
     conversation_settings_diff: dict[str, Any] | None = None
-    max_concurrent_sandboxes: int | None = Field(default=None, gt=0, le=100)
 
     @model_validator(mode='after')
     def _normalize_settings_diffs(self) -> 'OrgUpdate':
@@ -490,8 +477,6 @@ class OrgMemberResponse(BaseModel):
     role: str
     role_rank: int
     status: str | None
-    max_concurrent_sandboxes_override: int | None = None
-    effective_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
 
 class OrgMemberPage(BaseModel):
@@ -506,7 +491,6 @@ class OrgMemberUpdate(BaseModel):
     """Request model for updating an organization member."""
 
     role: str | None = None  # Role name: 'owner', 'admin', or 'member'
-    max_concurrent_sandboxes_override: int | None = Field(default=None, gt=0, le=100)
 
 
 class MeResponse(BaseModel):
@@ -525,8 +509,6 @@ class MeResponse(BaseModel):
     agent_settings_diff: dict[str, Any] = Field(default_factory=dict)
     conversation_settings_diff: dict[str, Any] = Field(default_factory=dict)
     status: str | None = None
-    max_concurrent_sandboxes_override: int | None = None
-    effective_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @staticmethod
     def _mask_key(secret: str | SecretStr | None) -> str:
@@ -546,14 +528,8 @@ class MeResponse(BaseModel):
         member: OrgMember,
         role: Role,
         email: str,
-        org_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
     ) -> 'MeResponse':
         """Create a MeResponse from an OrgMember, Role, and user email."""
-        effective_limit = (
-            member.max_concurrent_sandboxes_override
-            if member.max_concurrent_sandboxes_override is not None
-            else org_max_concurrent_sandboxes
-        )
         return cls(
             org_id=str(member.org_id),
             user_id=str(member.user_id),
@@ -564,8 +540,6 @@ class MeResponse(BaseModel):
             agent_settings_diff=dict(member.agent_settings_diff or {}),
             conversation_settings_diff=dict(member.conversation_settings_diff or {}),
             status=member.status,
-            max_concurrent_sandboxes_override=member.max_concurrent_sandboxes_override,
-            effective_max_concurrent_sandboxes=effective_limit,
         )
 
 
@@ -574,7 +548,6 @@ class OrgAppSettingsResponse(BaseModel):
 
     enable_proactive_conversation_starters: bool = True
     max_budget_per_task: float | None = None
-    max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @classmethod
     def from_org(cls, org: Org) -> 'OrgAppSettingsResponse':
@@ -591,9 +564,6 @@ class OrgAppSettingsResponse(BaseModel):
             if org.enable_proactive_conversation_starters is not None
             else True,
             max_budget_per_task=org.max_budget_per_task,
-            max_concurrent_sandboxes=org.max_concurrent_sandboxes
-            if org.max_concurrent_sandboxes is not None
-            else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
         )
 
 
@@ -602,7 +572,6 @@ class OrgAppSettingsUpdate(BaseModel):
 
     enable_proactive_conversation_starters: bool | None = None
     max_budget_per_task: float | None = None
-    max_concurrent_sandboxes: int | None = Field(default=None, gt=0, le=100)
 
     @field_validator('max_budget_per_task')
     @classmethod
