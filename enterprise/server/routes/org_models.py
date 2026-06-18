@@ -1,5 +1,10 @@
 from typing import Annotated, Any
 
+from openhands.sdk.settings import (
+    AgentSettingsConfig,
+    ConversationSettings,
+    OpenHandsAgentSettings,
+)
 from pydantic import (
     BaseModel,
     EmailStr,
@@ -19,11 +24,6 @@ from openhands.app_server.settings.settings_models import (
     _load_persisted_conversation_settings,
 )
 from openhands.app_server.utils.llm import MASKED_API_KEY, resolve_llm_base_url
-from openhands.sdk.settings import (
-    AgentSettingsConfig,
-    ConversationSettings,
-    OpenHandsAgentSettings,
-)
 from openhands.storage.data_models.settings import MarketplaceRegistration
 
 
