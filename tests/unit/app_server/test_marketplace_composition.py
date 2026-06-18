@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 
-import pytest
-
 
 # Inline implementation for testing without FastAPI imports
 def _get_instance_default_marketplaces() -> list[dict]:
