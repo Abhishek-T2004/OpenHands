@@ -488,7 +488,6 @@ def test_settings_no_pydantic_frozen_field_warning():
         )
 
 
-<<<<<<< HEAD
 def test_litellm_proxy_with_openhands_proxy_keeps_prefix_for_display():
     """Display data no longer reverse-maps LiteLLM proxy model names."""
     settings = Settings(
