@@ -168,7 +168,6 @@ async def test_create_pr_comment_service_hook_posts_expected_payload():
 
     response = await service.create_pr_comment_service_hook(
         project_id='project-id',
-        repo_id='repo-id',
         webhook_url='https://app.example.com/integration/azure-devops/events',
         webhook_secret='secret',
     )
@@ -181,10 +180,7 @@ async def test_create_pr_comment_service_hook_posts_expected_payload():
     assert kwargs['method'] == RequestMethod.POST
     assert kwargs['params']['eventType'] == 'ms.vss-code.git-pullrequest-comment-event'
     assert kwargs['params']['resourceVersion'] == '2.0'
-    assert kwargs['params']['publisherInputs'] == {
-        'projectId': 'project-id',
-        'repository': 'repo-id',
-    }
+    assert kwargs['params']['publisherInputs'] == {'projectId': 'project-id'}
     assert kwargs['params']['consumerInputs']['url'] == (
         'https://app.example.com/integration/azure-devops/events'
     )

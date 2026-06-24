@@ -39,8 +39,6 @@ def _azure_resource():
         organization='alonaking',
         project_id='project-id',
         project_name='Project',
-        repo_id='repo-id',
-        repo_name='Repo',
     )
 
 
@@ -52,15 +50,13 @@ async def test_get_azure_devops_resources_reports_installed_status(monkeypatch):
     class FakeAzureDevOpsService:
         organization = 'alonaking'
 
-        async def get_repositories_for_webhook_setup(self):
+        async def get_projects_for_webhook_setup(self):
             return [
                 {
                     'organization': 'alonaking',
                     'project_id': 'project-id',
                     'project_name': 'Project',
-                    'repo_id': 'repo-id',
-                    'repo_name': 'Repo',
-                    'full_name': 'alonaking/Project/Repo',
+                    'full_name': 'alonaking/Project',
                 }
             ]
 
@@ -69,10 +65,7 @@ async def test_get_azure_devops_resources_reports_installed_status(monkeypatch):
                 {
                     'id': 'pr-subscription-id',
                     'eventType': azure_devops.AZURE_DEVOPS_PR_COMMENT_EVENT,
-                    'publisherInputs': {
-                        'projectId': 'project-id',
-                        'repository': 'repo-id',
-                    },
+                    'publisherInputs': {'projectId': 'project-id'},
                     'consumerInputs': {
                         'url': 'https://app.example.com/integration/azure-devops/events',
                     },
@@ -97,6 +90,8 @@ async def test_get_azure_devops_resources_reports_installed_status(monkeypatch):
 
     assert len(response.resources) == 1
     resource = response.resources[0]
+    assert resource.type == 'project'
+    assert resource.full_name == 'alonaking/Project'
     assert resource.webhook_installed is True
     assert resource.pr_subscription_id == 'pr-subscription-id'
     assert resource.work_item_subscription_id == 'work-item-subscription-id'
@@ -129,10 +124,7 @@ async def test_reinstall_azure_devops_webhook_replaces_existing_hooks(monkeypatc
                 {
                     'id': 'old-pr-subscription-id',
                     'eventType': azure_devops.AZURE_DEVOPS_PR_COMMENT_EVENT,
-                    'publisherInputs': {
-                        'projectId': 'project-id',
-                        'repository': 'repo-id',
-                    },
+                    'publisherInputs': {'projectId': 'project-id'},
                     'consumerInputs': {
                         'url': 'https://app.example.com/integration/azure-devops/events',
                     },
@@ -170,7 +162,6 @@ async def test_reinstall_azure_devops_webhook_replaces_existing_hooks(monkeypatc
     )
     fake_service.create_pr_comment_service_hook.assert_awaited_once_with(
         project_id='project-id',
-        repo_id='repo-id',
         webhook_url='https://app.example.com/integration/azure-devops/events',
         webhook_secret='secret',
     )

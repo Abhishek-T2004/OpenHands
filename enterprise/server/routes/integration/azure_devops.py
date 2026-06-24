@@ -35,13 +35,11 @@ class AzureDevOpsResourceIdentifier(BaseModel):
     organization: str
     project_id: str
     project_name: str
-    repo_id: str
-    repo_name: str
 
 
 class AzureDevOpsResourceWithWebhookStatus(AzureDevOpsResourceIdentifier):
     full_name: str
-    type: str = 'repository'
+    type: str = 'project'
     webhook_installed: bool
     pr_webhook_installed: bool
     work_item_webhook_installed: bool
@@ -63,8 +61,6 @@ class AzureDevOpsWebhookInstallationResult(BaseModel):
     organization: str
     project_id: str
     project_name: str
-    repo_id: str
-    repo_name: str
     success: bool
     error: str | None
     pr_subscription_id: str | None
@@ -117,14 +113,12 @@ def _matches_pr_comment_subscription(
     subscription: dict[str, Any],
     *,
     project_id: str,
-    repo_id: str,
     webhook_url: str,
 ) -> bool:
     publisher_inputs = _subscription_publisher_inputs(subscription)
     return (
         _subscription_event_type(subscription) == AZURE_DEVOPS_PR_COMMENT_EVENT
         and publisher_inputs.get('projectId') == project_id
-        and publisher_inputs.get('repository') == repo_id
         and _subscription_consumer_url(subscription) == webhook_url
     )
 
@@ -150,22 +144,11 @@ def _normalize_resource(
     organization = resource.organization.strip()
     project_id = resource.project_id.strip()
     project_name = resource.project_name.strip()
-    repo_id = resource.repo_id.strip()
-    repo_name = resource.repo_name.strip()
 
-    if (
-        not organization
-        or not project_id
-        or not project_name
-        or not repo_id
-        or not repo_name
-    ):
+    if not organization or not project_id or not project_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                'organization, project_id, project_name, repo_id, and repo_name '
-                'are required'
-            ),
+            detail='organization, project_id, and project_name are required',
         )
 
     if service.organization and organization != service.organization:
@@ -178,8 +161,6 @@ def _normalize_resource(
         organization=organization,
         project_id=project_id,
         project_name=project_name,
-        repo_id=repo_id,
-        repo_name=repo_name,
     )
 
 
@@ -230,19 +211,18 @@ async def verify_azure_devops_signature(
 async def get_azure_devops_resources(
     user_id: str = Depends(require_permission(Permission.MANAGE_INTEGRATIONS)),
 ) -> AzureDevOpsResourcesResponse:
-    """List Azure DevOps repositories with resolver hook installation status."""
+    """List Azure DevOps projects with resolver hook installation status."""
     try:
         service = SaaSAzureDevOpsService(external_auth_id=user_id)
         _ensure_azure_devops_organization(service)
         webhook_url = azure_devops_webhook_url()
 
-        repositories = await service.get_repositories_for_webhook_setup()
+        projects = await service.get_projects_for_webhook_setup()
         subscriptions = await service.list_service_hook_subscriptions()
 
         resources: list[AzureDevOpsResourceWithWebhookStatus] = []
-        for repository in repositories:
-            project_id = str(repository['project_id'])
-            repo_id = str(repository['repo_id'])
+        for project in projects:
+            project_id = str(project['project_id'])
             pr_subscription_id = next(
                 (
                     _subscription_id(subscription)
@@ -250,7 +230,6 @@ async def get_azure_devops_resources(
                     if _matches_pr_comment_subscription(
                         subscription,
                         project_id=project_id,
-                        repo_id=repo_id,
                         webhook_url=webhook_url,
                     )
                 ),
@@ -271,12 +250,10 @@ async def get_azure_devops_resources(
 
             resources.append(
                 AzureDevOpsResourceWithWebhookStatus(
-                    organization=str(repository['organization']),
+                    organization=str(project['organization']),
                     project_id=project_id,
-                    project_name=str(repository['project_name']),
-                    repo_id=repo_id,
-                    repo_name=str(repository['repo_name']),
-                    full_name=str(repository['full_name']),
+                    project_name=str(project['project_name']),
+                    full_name=str(project['full_name']),
                     webhook_installed=bool(
                         pr_subscription_id and work_item_subscription_id
                     ),
@@ -324,7 +301,6 @@ async def reinstall_azure_devops_webhook(
             if _matches_pr_comment_subscription(
                 subscription,
                 project_id=resource.project_id,
-                repo_id=resource.repo_id,
                 webhook_url=webhook_url,
             ) or _matches_work_item_comment_subscription(
                 subscription,
@@ -335,7 +311,6 @@ async def reinstall_azure_devops_webhook(
 
         pr_subscription = await service.create_pr_comment_service_hook(
             project_id=resource.project_id,
-            repo_id=resource.repo_id,
             webhook_url=webhook_url,
             webhook_secret=webhook_secret,
         )
@@ -354,7 +329,6 @@ async def reinstall_azure_devops_webhook(
                 'user_id': user_id,
                 'organization': resource.organization,
                 'project_id': resource.project_id,
-                'repo_id': resource.repo_id,
                 'pr_subscription_id': pr_subscription_id,
                 'work_item_subscription_id': work_item_subscription_id,
             },
@@ -364,8 +338,6 @@ async def reinstall_azure_devops_webhook(
             organization=resource.organization,
             project_id=resource.project_id,
             project_name=resource.project_name,
-            repo_id=resource.repo_id,
-            repo_name=resource.repo_name,
             success=True,
             error=None,
             pr_subscription_id=pr_subscription_id,
@@ -388,7 +360,7 @@ async def uninstall_azure_devops_webhook(
     body: AzureDevOpsWebhookRequest,
     user_id: str = Depends(require_permission(Permission.MANAGE_INTEGRATIONS)),
 ) -> AzureDevOpsWebhookInstallationResult:
-    """Delete the Azure DevOps resolver Service Hooks for a repository."""
+    """Delete the Azure DevOps resolver Service Hooks for a project."""
     service = SaaSAzureDevOpsService(external_auth_id=user_id)
     _ensure_azure_devops_organization(service)
     resource = _normalize_resource(body.resource, service)
@@ -399,41 +371,26 @@ async def uninstall_azure_devops_webhook(
         deleted_pr_subscription_id: str | None = None
         deleted_work_item_subscription_id: str | None = None
 
+        # Hooks are project-scoped (one PR + one work-item per project), so just
+        # delete both matching subscriptions.
         for subscription in subscriptions:
             subscription_id = _subscription_id(subscription)
-            if subscription_id and _matches_pr_comment_subscription(
+            if not subscription_id:
+                continue
+            if _matches_pr_comment_subscription(
                 subscription,
                 project_id=resource.project_id,
-                repo_id=resource.repo_id,
                 webhook_url=webhook_url,
             ):
                 await service.delete_service_hook_subscription(subscription_id)
                 deleted_pr_subscription_id = subscription_id
-
-        remaining_pr_subscriptions = [
-            subscription
-            for subscription in subscriptions
-            if not _matches_pr_comment_subscription(
+            elif _matches_work_item_comment_subscription(
                 subscription,
                 project_id=resource.project_id,
-                repo_id=resource.repo_id,
                 webhook_url=webhook_url,
-            )
-            and _subscription_event_type(subscription) == AZURE_DEVOPS_PR_COMMENT_EVENT
-            and _subscription_publisher_inputs(subscription).get('projectId')
-            == resource.project_id
-            and _subscription_consumer_url(subscription) == webhook_url
-        ]
-        if not remaining_pr_subscriptions:
-            for subscription in subscriptions:
-                subscription_id = _subscription_id(subscription)
-                if subscription_id and _matches_work_item_comment_subscription(
-                    subscription,
-                    project_id=resource.project_id,
-                    webhook_url=webhook_url,
-                ):
-                    await service.delete_service_hook_subscription(subscription_id)
-                    deleted_work_item_subscription_id = subscription_id
+            ):
+                await service.delete_service_hook_subscription(subscription_id)
+                deleted_work_item_subscription_id = subscription_id
 
         logger.info(
             '[Azure DevOps] Resolver hooks uninstalled',
@@ -441,7 +398,6 @@ async def uninstall_azure_devops_webhook(
                 'user_id': user_id,
                 'organization': resource.organization,
                 'project_id': resource.project_id,
-                'repo_id': resource.repo_id,
                 'pr_subscription_id': deleted_pr_subscription_id,
                 'work_item_subscription_id': deleted_work_item_subscription_id,
             },
@@ -451,8 +407,6 @@ async def uninstall_azure_devops_webhook(
             organization=resource.organization,
             project_id=resource.project_id,
             project_name=resource.project_name,
-            repo_id=resource.repo_id,
-            repo_name=resource.repo_name,
             success=True,
             error=None,
             pr_subscription_id=deleted_pr_subscription_id,

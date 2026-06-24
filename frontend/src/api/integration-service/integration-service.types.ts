@@ -98,10 +98,8 @@ export interface AzureDevOpsResource {
   organization: string;
   project_id: string;
   project_name: string;
-  repo_id: string;
-  repo_name: string;
   full_name: string;
-  type: "repository";
+  type: "project";
   webhook_installed: boolean;
   pr_webhook_installed: boolean;
   work_item_webhook_installed: boolean;
@@ -119,16 +117,12 @@ export interface AzureDevOpsResourceIdentifier {
   organization: string;
   project_id: string;
   project_name: string;
-  repo_id: string;
-  repo_name: string;
 }
 
 export interface AzureDevOpsWebhookInstallationResult {
   organization: string;
   project_id: string;
   project_name: string;
-  repo_id: string;
-  repo_name: string;
   success: boolean;
   error: string | null;
   pr_subscription_id: string | null;

@@ -14,7 +14,7 @@ interface AzureDevOpsWebhookManagerProps {
 }
 
 function resourceKey(resource: AzureDevOpsResource) {
-  return `${resource.project_id}:${resource.repo_id}`;
+  return resource.project_id;
 }
 
 function resourceIdentifier(resource: AzureDevOpsResource) {
@@ -22,8 +22,6 @@ function resourceIdentifier(resource: AzureDevOpsResource) {
     organization: resource.organization,
     project_id: resource.project_id,
     project_name: resource.project_name,
-    repo_id: resource.repo_id,
-    repo_name: resource.repo_name,
   };
 }
 
@@ -154,7 +152,7 @@ export function AzureDevOpsWebhookManager({
           <thead className="bg-neutral-800">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                {t(I18nKey.AZURE_DEVOPS$WEBHOOK_COLUMN_REPOSITORY)}
+                {t(I18nKey.AZURE_DEVOPS$WEBHOOK_COLUMN_PROJECT)}
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 {t(I18nKey.AZURE_DEVOPS$WEBHOOK_COLUMN_STATUS)}
@@ -191,7 +189,7 @@ export function AzureDevOpsWebhookManager({
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
                       <Typography.Text className="text-sm font-medium text-white">
-                        {resource.repo_name}
+                        {resource.project_name}
                       </Typography.Text>
                       <Typography.Text className="text-xs text-gray-400">
                         {resource.full_name}

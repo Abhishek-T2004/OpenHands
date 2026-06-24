@@ -19,47 +19,32 @@ AZURE_DEVOPS_SERVICE_HOOK_API_VERSION = '7.1'
 class AzureDevOpsWebhooksMixin(AzureDevOpsMixinBase):
     """Mixin for Azure DevOps Service Hooks operations."""
 
-    async def get_repositories_for_webhook_setup(
-        self, max_repos: int = 1000
+    async def get_projects_for_webhook_setup(
+        self, max_projects: int = 1000
     ) -> list[dict[str, Any]]:
-        """Return repositories with project ids needed by Service Hooks."""
+        """Return projects needed by project-scoped Service Hooks."""
         projects_url = f'{self.base_url}/_apis/projects?api-version=7.1'
         projects_response, _ = await self._make_request(projects_url)
         projects = projects_response.get('value', [])
 
-        repositories: list[dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for project in projects:
             project_name = project.get('name')
             project_id = project.get('id')
             if not project_name or not project_id:
                 continue
-
-            project_enc = self._encode_url_component(project_name)
-            repos_url = (
-                f'{self.base_url}/{project_enc}/_apis/git/repositories?api-version=7.1'
+            result.append(
+                {
+                    'organization': self.organization,
+                    'project_id': project_id,
+                    'project_name': project_name,
+                    'full_name': f'{self.organization}/{project_name}',
+                }
             )
-            repos_response, _ = await self._make_request(repos_url)
-            for repo in repos_response.get('value', []):
-                repo_id = repo.get('id')
-                repo_name = repo.get('name')
-                if not repo_id or not repo_name:
-                    continue
-                repositories.append(
-                    {
-                        'organization': self.organization,
-                        'project_id': project_id,
-                        'project_name': project_name,
-                        'repo_id': repo_id,
-                        'repo_name': repo_name,
-                        'full_name': (
-                            f'{self.organization}/{project_name}/{repo_name}'
-                        ),
-                    }
-                )
-                if len(repositories) >= max_repos:
-                    return repositories
+            if len(result) >= max_projects:
+                break
 
-        return repositories
+        return result
 
     async def list_service_hook_subscriptions(self) -> list[dict[str, Any]]:
         url = (
@@ -73,13 +58,13 @@ class AzureDevOpsWebhooksMixin(AzureDevOpsMixinBase):
         self,
         *,
         project_id: str,
-        repo_id: str,
         webhook_url: str,
         webhook_secret: str,
     ) -> dict[str, Any]:
+        # Project-scoped (no repository filter) so it covers all repos in the project.
         return await self._create_service_hook_subscription(
             event_type=AZURE_DEVOPS_PR_COMMENT_EVENT,
-            publisher_inputs={'projectId': project_id, 'repository': repo_id},
+            publisher_inputs={'projectId': project_id},
             webhook_url=webhook_url,
             webhook_secret=webhook_secret,
         )
