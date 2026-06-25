@@ -12,10 +12,10 @@ You have access to an environment variable, `BITBUCKET_DATA_CENTER_TOKEN`, which
 a basic auth token in the format `username:your-token` that allows you to interact with the git repository.
 
 Because Bitbucket Data Center is self-hosted, there is no fixed domain like `bitbucket.org`.
-The host/domain comes from the `BITBUCKET_DATA_CENTER_HOST` environment variable, which is
-the same variable the OpenHands Bitbucket Data Center integration uses to build its base URL
-(`https://{host}/rest/api/1.0`). Substitute `${BITBUCKET_DATA_CENTER_HOST}` wherever you see
-`{domain}` below. If `BITBUCKET_DATA_CENTER_HOST` is not set, ask the user for the host
+The host/domain is provided to you as the `BITBUCKET_DATA_CENTER_HOST` environment variable,
+which OpenHands injects into your environment alongside `BITBUCKET_DATA_CENTER_TOKEN` (it is
+available even before any repository is cloned). Substitute `${BITBUCKET_DATA_CENTER_HOST}`
+wherever you see `{domain}` below. In the rare case it is not set, ask the user for the host
 instead of guessing.
 
 You can also use this token to interact with Bitbucket Data Center's REST API:
