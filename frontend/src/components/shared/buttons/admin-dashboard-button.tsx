@@ -36,8 +36,8 @@ export function AdminDashboardButton() {
           ? "bg-[#262626] text-white"
           : "text-[#8C8C8C] hover:text-white hover:bg-[#1E1E1E]",
       )}
-      title="Admin Dashboard"
-      aria-label="Admin Dashboard"
+      title="Usage & Monitoring"
+      aria-label="Usage & Monitoring"
     >
       <svg
         width="20"
