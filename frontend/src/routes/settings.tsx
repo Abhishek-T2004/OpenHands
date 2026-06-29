@@ -40,6 +40,7 @@ const SAAS_ONLY_PATHS = [
   "/settings/org-defaults/condenser",
   "/settings/org-defaults/verification",
   "/settings/admin-dashboard",
+  "/settings/budgets",
 ];
 
 const ORG_WIDE_BADGE_PATHS = new Set<string>([
@@ -118,7 +119,8 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
     pathname === "/settings/billing" ||
     pathname === "/settings/org" ||
     pathname === "/settings/org-members" ||
-    pathname === "/settings/admin-dashboard"
+    pathname === "/settings/admin-dashboard" ||
+    pathname === "/settings/budgets"
   ) {
     const user = await getActiveOrganizationUser();
 
@@ -176,6 +178,14 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
 
     // Admin Dashboard route protection: only admins and owners can access
     if (pathname === "/settings/admin-dashboard") {
+      const role = user?.role ?? "member";
+      if (!user || (role !== "admin" && role !== "owner") || isPersonalOrg) {
+        return redirect("/settings");
+      }
+    }
+
+    // Budgets route protection: only admins and owners can access
+    if (pathname === "/settings/budgets") {
       const role = user?.role ?? "member";
       if (!user || (role !== "admin" && role !== "owner") || isPersonalOrg) {
         return redirect("/settings");
