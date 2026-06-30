@@ -28,6 +28,8 @@ from openhands.app_server.app_conversation.app_conversation_info_service import 
 )
 from openhands.app_server.app_conversation.app_conversation_models import (
     ACP_SERVER_TAG_KEY,
+    AGENT_PROFILE_ID_TAG_KEY,
+    AGENT_PROFILE_REVISION_TAG_KEY,
     ARCHIVE_WORKSPACE_PATH_TAG_KEY,
     AgentType,
     AppConversation,
@@ -494,6 +496,21 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
             # archive captures the right directory without re-deriving the path
             # from settings (e.g. grouping) that may change before delete.
             tags[ARCHIVE_WORKSPACE_PATH_TAG_KEY] = working_dir
+            # Stamp Agent Profile provenance. The active profile resolved into the
+            # launched ``agent_settings`` (SaasSettingsStore.load carries its id +
+            # revision onto UserInfo); ride the tags dict so it round-trips and
+            # surfaces as the ``launched_agent_profile`` computed field. Reflects
+            # what actually launched, so it stays truthful even when the request
+            # carried an explicit agent_profile_id.
+            profile_user = await self.user_context.get_user_info()
+            launched_profile_id = getattr(profile_user, 'active_agent_profile_id', None)
+            if isinstance(launched_profile_id, str) and launched_profile_id:
+                tags[AGENT_PROFILE_ID_TAG_KEY] = launched_profile_id
+                launched_revision = getattr(
+                    profile_user, 'active_agent_profile_revision', None
+                )
+                if isinstance(launched_revision, int):
+                    tags[AGENT_PROFILE_REVISION_TAG_KEY] = str(launched_revision)
             if request_agent.agent_kind == 'acp':
                 llm_model = request_agent.acp_model
                 agent_kind = 'acp'
@@ -1284,10 +1301,12 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
         Args:
             mcp_servers: Dictionary to add servers to
             user: User information containing custom MCP config
-        """
-        if isinstance(user.agent_settings, ACPAgentSettings):
-            return
 
+        Handles both OpenHands and ACP agent settings: a resolved ACP profile's
+        ref-filtered ``mcp_config`` rides on ``ACPAgentSettings.mcp_config`` and
+        must reach ``create_agent`` (the ACP-only early-return that previously
+        dropped it is gone — SDK#3705 remainder, #15044 §7).
+        """
         sdk_mcp = user.agent_settings.mcp_config
         if not sdk_mcp or not sdk_mcp.mcpServers:
             return
@@ -1923,6 +1942,16 @@ class LiveStatusAppConversationService(AppConversationServiceBase):
                 update={'api_key': None, 'base_url': None}
             ),
         }
+        # Forward the resolved profile's / user's custom MCP servers to the ACP
+        # subprocess (#15044 §7). Only custom servers — the system OpenHands MCP
+        # server (Tavily proxy) is runtime-internal and unreachable by an external
+        # ACP CLI, so it is intentionally not injected here.
+        from fastmcp.mcp_config import MCPConfig as _MCPConfig
+
+        acp_mcp_servers: dict[str, Any] = {}
+        self._merge_custom_mcp_config(acp_mcp_servers, user)
+        if acp_mcp_servers:
+            settings_update['mcp_config'] = _MCPConfig(mcpServers=acp_mcp_servers)
         if system_message_suffix:
             settings_update['agent_context'] = AgentContext(
                 system_message_suffix=system_message_suffix

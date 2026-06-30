@@ -163,6 +163,14 @@ class Settings(BaseModel):
             'See ``LLMProfiles`` for the profile-management API.'
         ),
     )
+    # Active Agent Profile provenance (cloud SaaS), surfaced by
+    # ``SaasSettingsStore.load`` when a member's active agent profile resolves.
+    # ``active_agent_profile_id`` mirrors the SDK persisted-settings pointer;
+    # the revision rides alongside so conversation-start can stamp
+    # ``LaunchedAgentProfile``. Neither is a persisted setting — they default to
+    # None and ``store()`` never writes them (no backing column).
+    active_agent_profile_id: str | None = None
+    active_agent_profile_revision: int | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
