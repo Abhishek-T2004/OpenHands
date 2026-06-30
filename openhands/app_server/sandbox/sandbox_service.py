@@ -197,22 +197,28 @@ class SandboxService(ABC):
     async def delete_sandbox(self, sandbox_id: str) -> bool:
         """Begin the process of deleting a sandbox (which may involve stopping it).
 
-        Return False if the sandbox did not exist.
+        Return False if the sandbox did not exist. Purely sandbox-scoped (stop the
+        runtime, delete the record); workspace capture is a separate
+        conversation-scoped step (``archive_conversation_workspace``) the
+        conversation-delete finalizer runs before the sandbox is torn down.
         """
 
-    async def check_concurrency_limit(self) -> None:  # noqa: B027
-        """Check if the user has reached their concurrent sandbox limit.
+    async def archive_conversation_workspace(
+        self,
+        sandbox_id: str,
+        conversation_id: str | None = None,
+        workspace_path: str | None = None,
+    ) -> bool:
+        """Archive one conversation's workspace; return whether delete may proceed.
 
-        This method should be called before starting a new sandbox to fail fast
-        with an appropriate error response.
-
-        Raises:
-            ConcurrencyLimitError: If the user has reached their limit
-
-        Default implementation does nothing (no limits enforced).
-        Subclasses can override to implement limit checking.
+        Default no-op (returns True) for backends that do not archive; overridden
+        by RemoteSandboxService. The conversation-delete finalizer calls this
+        before ``delete_sandbox`` so the workspace is captured while the runtime is
+        still up. ``workspace_path`` is the path pinned at creation. Returns False
+        only when archiving is REQUIRED and failed, so the caller leaves the
+        sandbox up for a later (idle-reap) capture.
         """
-        pass  # Default: no limits enforced
+        return True
 
     async def pause_old_sandboxes(self, max_num_sandboxes: int) -> list[str]:
         """Pause the oldest sandboxes if there are more than max_num_sandboxes running.

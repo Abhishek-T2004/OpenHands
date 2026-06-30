@@ -36,13 +36,13 @@ from integrations.utils import (
     get_session_expired_message,
 )
 from jinja2 import Environment, FileSystemLoader
+from server.auth.constants import JIRA_HTTP_TIMEOUT
 from server.auth.saas_user_auth import get_user_auth_from_keycloak_id
 from server.auth.token_manager import TokenManager
 from storage.jira_integration_store import JiraIntegrationStore
 from storage.jira_user import JiraUser
 from storage.jira_workspace import JiraWorkspace
 
-from openhands.app_server.errors import ConcurrencyLimitError
 from openhands.app_server.types import (
     LLMAuthenticationError,
     MissingSettingsError,
@@ -312,22 +312,6 @@ class JiraManager(Manager[JiraViewInterface]):
             )
             msg_info = str(e)
 
-        except ConcurrencyLimitError as e:
-            detail = e.detail if isinstance(e.detail, dict) else {}
-            limit = detail.get('limit', '?')
-            logger.warning(
-                '[Jira] Concurrency limit reached',
-                extra={
-                    'issue_key': view.payload.issue_key,
-                    'limit': limit,
-                    'current': detail.get('current'),
-                },
-            )
-            msg_info = (
-                f'You have reached your limit of {limit} concurrent conversation(s). '
-                f'Please close an existing conversation at {HOST_URL} to start a new one.'
-            )
-
         except Exception as e:
             logger.error(
                 '[Jira] Unexpected error starting job',
@@ -360,7 +344,9 @@ class JiraManager(Manager[JiraViewInterface]):
             f'{JIRA_CLOUD_API_URL}/{jira_cloud_id}/rest/api/2/issue/{issue_key}/comment'
         )
         data = format_jira_comment_body(message)
-        async with httpx.AsyncClient(verify=httpx_verify_option()) as client:
+        async with httpx.AsyncClient(
+            verify=httpx_verify_option(), timeout=JIRA_HTTP_TIMEOUT
+        ) as client:
             response = await client.post(
                 url, auth=(svc_acc_email, svc_acc_api_key), json=data
             )

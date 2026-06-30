@@ -1,5 +1,5 @@
 """
-Unit tests for email validation dependency (get_admin_user_id and is_openhands_member).
+Unit tests for email validation dependency (get_admin_user_id).
 
 Tests the FastAPI dependency that validates @openhands.dev email domain.
 """
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, Request
-from server.email_validation import get_admin_user_id, is_openhands_member
+from server.email_validation import get_admin_user_id, get_org_creator_user_id
 
 
 @pytest.fixture
@@ -272,104 +272,100 @@ async def test_get_openhands_user_id_empty_email(mock_request, mock_user_auth):
         assert 'email not available' in exc_info.value.detail.lower()
 
 
-# Tests for is_openhands_member helper function
+# ---------------------------------------------------------------------------
+# Tests for get_org_creator_user_id (OPEN_ORG_CREATION_ENABLED feature switch)
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_is_openhands_member_true_for_valid_email(mock_request, mock_user_auth):
+async def test_get_org_creator_user_id_no_user_id_raises_401(mock_request):
     """
-    GIVEN: User with @openhands.dev email
-    WHEN: is_openhands_member is called
-    THEN: Returns True
+    GIVEN: No user ID provided (None)
+    WHEN: get_org_creator_user_id is called (regardless of feature switch)
+    THEN: 401 Unauthorized is raised
     """
-    mock_user_auth.get_user_email.return_value = 'test@openhands.dev'
+    with pytest.raises(HTTPException) as exc_info:
+        await get_org_creator_user_id(mock_request, None)
 
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is True
+    assert exc_info.value.status_code == 401
+    assert 'not authenticated' in exc_info.value.detail.lower()
 
 
 @pytest.mark.asyncio
-async def test_is_openhands_member_false_for_external_email(
+async def test_get_org_creator_user_id_feature_disabled_uses_admin_check(
     mock_request, mock_user_auth
 ):
     """
-    GIVEN: User with non-@openhands.dev email
-    WHEN: is_openhands_member is called
-    THEN: Returns False
+    GIVEN: OPEN_ORG_CREATION_ENABLED is disabled and user has non-admin email
+    WHEN: get_org_creator_user_id is called
+    THEN: Falls back to get_admin_user_id and raises 403 Forbidden
     """
+    user_id = 'test-user-123'
     mock_user_auth.get_user_email.return_value = 'test@external.com'
 
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is False
+    with (
+        patch('server.email_validation.OPEN_ORG_CREATION_ENABLED', False),
+        patch('server.email_validation.get_user_auth', return_value=mock_user_auth),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_org_creator_user_id(mock_request, user_id)
+
+    assert exc_info.value.status_code == 403
+    assert 'openhands.dev' in exc_info.value.detail.lower()
 
 
 @pytest.mark.asyncio
-async def test_is_openhands_member_false_for_none_email(mock_request, mock_user_auth):
+async def test_get_org_creator_user_id_feature_disabled_admin_email_succeeds(
+    mock_request, mock_user_auth
+):
     """
-    GIVEN: User with no email (None)
-    WHEN: is_openhands_member is called
-    THEN: Returns False
+    GIVEN: OPEN_ORG_CREATION_ENABLED is disabled and user has @openhands.dev email
+    WHEN: get_org_creator_user_id is called
+    THEN: User ID is returned (existing admin behavior is preserved)
     """
-    mock_user_auth.get_user_email.return_value = None
+    user_id = 'test-user-123'
+    mock_user_auth.get_user_email.return_value = 'test@openhands.dev'
 
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is False
+    with (
+        patch('server.email_validation.OPEN_ORG_CREATION_ENABLED', False),
+        patch('server.email_validation.get_user_auth', return_value=mock_user_auth),
+    ):
+        result = await get_org_creator_user_id(mock_request, user_id)
+
+    assert result == user_id
 
 
 @pytest.mark.asyncio
-async def test_is_openhands_member_false_for_empty_email(mock_request, mock_user_auth):
+async def test_get_org_creator_user_id_feature_enabled_allows_non_admin(mock_request):
     """
-    GIVEN: User with empty string email
-    WHEN: is_openhands_member is called
-    THEN: Returns False
+    GIVEN: OPEN_ORG_CREATION_ENABLED is enabled and user has non-admin email
+    WHEN: get_org_creator_user_id is called
+    THEN: User ID is returned without consulting email/admin check
     """
-    mock_user_auth.get_user_email.return_value = ''
+    user_id = 'test-user-123'
 
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is False
+    with patch('server.email_validation.OPEN_ORG_CREATION_ENABLED', True):
+        # get_user_auth must not be invoked when the feature is enabled.
+        with patch(
+            'server.email_validation.get_user_auth',
+            side_effect=AssertionError('get_user_auth should not be called'),
+        ):
+            result = await get_org_creator_user_id(mock_request, user_id)
+
+    assert result == user_id
 
 
 @pytest.mark.asyncio
-async def test_is_openhands_member_case_sensitive(mock_request, mock_user_auth):
+async def test_get_org_creator_user_id_feature_enabled_still_rejects_unauthenticated(
+    mock_request,
+):
     """
-    GIVEN: User with uppercase @OPENHANDS.DEV email
-    WHEN: is_openhands_member is called
-    THEN: Returns False (case-sensitive check)
+    GIVEN: OPEN_ORG_CREATION_ENABLED is enabled but no user_id is provided
+    WHEN: get_org_creator_user_id is called
+    THEN: 401 Unauthorized is still raised
     """
-    mock_user_auth.get_user_email.return_value = 'test@OPENHANDS.DEV'
+    with patch('server.email_validation.OPEN_ORG_CREATION_ENABLED', True):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_org_creator_user_id(mock_request, None)
 
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_openhands_member_subdomain_not_allowed(mock_request, mock_user_auth):
-    """
-    GIVEN: User with subdomain email like @test.openhands.dev
-    WHEN: is_openhands_member is called
-    THEN: Returns False
-    """
-    mock_user_auth.get_user_email.return_value = 'test@test.openhands.dev'
-
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is False
-
-
-@pytest.mark.asyncio
-async def test_is_openhands_member_with_plus_addressing(mock_request, mock_user_auth):
-    """
-    GIVEN: User with plus addressing (test+tag@openhands.dev)
-    WHEN: is_openhands_member is called
-    THEN: Returns True
-    """
-    mock_user_auth.get_user_email.return_value = 'test+tag@openhands.dev'
-
-    with patch('server.email_validation.get_user_auth', return_value=mock_user_auth):
-        result = await is_openhands_member(mock_request)
-        assert result is True
+    assert exc_info.value.status_code == 401

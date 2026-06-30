@@ -102,5 +102,6 @@ class ResolverUserContext(UserContext):
     async def get_user_git_info(self) -> UserGitInfo | None:
         return await self.saas_user_auth.get_user_git_info()
 
-    async def get_max_concurrent_sandboxes(self, default: int = 10) -> int:
-        return await self.saas_user_auth.get_max_concurrent_sandboxes(default)
+    async def get_default_sandbox_spec_id(self) -> str | None:
+        user_info = await self.get_user_info()
+        return user_info.default_sandbox_spec_id

@@ -43,13 +43,20 @@ class SandboxError(OpenHandsError):
     """Error in Sandbox."""
 
 
-class ConcurrencyLimitError(OpenHandsError):
-    """Error when user has reached their concurrent sandbox limit."""
+class SandboxDeleteRetryError(OpenHandsError):
+    """The sandbox exists but its delete could not complete and was kept for retry.
+
+    Raised by ``delete_sandbox`` when the runtime /stop or lookup hits a transient
+    failure. (Archiving never raises — it returns False from
+    ``archive_conversation_workspace`` to signal a REQUIRED capture should block.)
+    503 (vs 404) so a client distinguishes "still here, try again" from "not
+    found" and keeps retrying.
+    """
 
     def __init__(
         self,
         detail: Any = None,
         headers: dict[str, str] | None = None,
-        status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
+        status_code: int = status.HTTP_503_SERVICE_UNAVAILABLE,
     ):
         super().__init__(status_code=status_code, detail=detail, headers=headers)

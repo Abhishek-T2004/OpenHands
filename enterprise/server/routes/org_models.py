@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Any
 
 from pydantic import (
@@ -9,11 +10,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from server.constants import (
-    DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES,
-    DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
-    LITE_LLM_API_URL,
-)
+from server.constants import LITE_LLM_API_URL
 from storage.org import Org
 from storage.org_member import OrgMember
 from storage.role import Role
@@ -187,7 +184,6 @@ class OrgResponse(BaseModel):
     v1_enabled: bool | None = None
     credits: float | None = None
     is_personal: bool = False
-    max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @classmethod
     def from_org(
@@ -218,13 +214,6 @@ class OrgResponse(BaseModel):
             v1_enabled=org.v1_enabled,
             credits=credits,
             is_personal=str(org.id) == user_id if user_id else False,
-            max_concurrent_sandboxes=org.max_concurrent_sandboxes
-            if org.max_concurrent_sandboxes is not None
-            else (
-                DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
-                if str(org.id) == user_id
-                else DEFAULT_COMMERCIAL_ORG_CONCURRENT_SANDBOXES
-            ),
         )
 
 
@@ -263,7 +252,6 @@ class OrgUpdate(BaseModel):
     llm_api_key: str | None = None
     agent_settings_diff: dict[str, Any] | None = None
     conversation_settings_diff: dict[str, Any] | None = None
-    max_concurrent_sandboxes: int | None = Field(default=None, gt=0, le=100)
 
     @model_validator(mode='after')
     def _normalize_settings_diffs(self) -> 'OrgUpdate':
@@ -489,8 +477,6 @@ class OrgMemberResponse(BaseModel):
     role: str
     role_rank: int
     status: str | None
-    max_concurrent_sandboxes_override: int | None = None
-    effective_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
 
 class OrgMemberPage(BaseModel):
@@ -505,7 +491,6 @@ class OrgMemberUpdate(BaseModel):
     """Request model for updating an organization member."""
 
     role: str | None = None  # Role name: 'owner', 'admin', or 'member'
-    max_concurrent_sandboxes_override: int | None = Field(default=None, gt=0, le=100)
 
 
 class MeResponse(BaseModel):
@@ -524,8 +509,6 @@ class MeResponse(BaseModel):
     agent_settings_diff: dict[str, Any] = Field(default_factory=dict)
     conversation_settings_diff: dict[str, Any] = Field(default_factory=dict)
     status: str | None = None
-    max_concurrent_sandboxes_override: int | None = None
-    effective_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @staticmethod
     def _mask_key(secret: str | SecretStr | None) -> str:
@@ -545,26 +528,23 @@ class MeResponse(BaseModel):
         member: OrgMember,
         role: Role,
         email: str,
-        org_max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
     ) -> 'MeResponse':
         """Create a MeResponse from an OrgMember, Role, and user email."""
-        effective_limit = (
-            member.max_concurrent_sandboxes_override
-            if member.max_concurrent_sandboxes_override is not None
-            else org_max_concurrent_sandboxes
+        # Only access member.llm_api_key when has_custom_llm_api_key is True
+        # to avoid decryption errors when the key is not set
+        llm_api_key = (
+            cls._mask_key(member.llm_api_key) if member.has_custom_llm_api_key else ''
         )
         return cls(
             org_id=str(member.org_id),
             user_id=str(member.user_id),
             email=email,
             role=role.name,
-            llm_api_key=cls._mask_key(member.llm_api_key),
+            llm_api_key=llm_api_key,
             llm_api_key_for_byor=cls._mask_key(member.llm_api_key_for_byor) or None,
             agent_settings_diff=dict(member.agent_settings_diff or {}),
             conversation_settings_diff=dict(member.conversation_settings_diff or {}),
             status=member.status,
-            max_concurrent_sandboxes_override=member.max_concurrent_sandboxes_override,
-            effective_max_concurrent_sandboxes=effective_limit,
         )
 
 
@@ -573,7 +553,6 @@ class OrgAppSettingsResponse(BaseModel):
 
     enable_proactive_conversation_starters: bool = True
     max_budget_per_task: float | None = None
-    max_concurrent_sandboxes: int = DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES
 
     @classmethod
     def from_org(cls, org: Org) -> 'OrgAppSettingsResponse':
@@ -590,9 +569,6 @@ class OrgAppSettingsResponse(BaseModel):
             if org.enable_proactive_conversation_starters is not None
             else True,
             max_budget_per_task=org.max_budget_per_task,
-            max_concurrent_sandboxes=org.max_concurrent_sandboxes
-            if org.max_concurrent_sandboxes is not None
-            else DEFAULT_PERSONAL_ORG_CONCURRENT_SANDBOXES,
         )
 
 
@@ -601,7 +577,6 @@ class OrgAppSettingsUpdate(BaseModel):
 
     enable_proactive_conversation_starters: bool | None = None
     max_budget_per_task: float | None = None
-    max_concurrent_sandboxes: int | None = Field(default=None, gt=0, le=100)
 
     @field_validator('max_budget_per_task')
     @classmethod
@@ -684,3 +659,102 @@ class OrgMemberFinancialPage(BaseModel):
     current_page: int = 1
     per_page: int = 10
     next_page_id: str | None = None
+
+
+class OrgConversationResponse(BaseModel):
+    """Response model for a single conversation in an organization."""
+
+    id: str  # conversation_id
+    title: str | None = None
+    llm_model: str | None = None
+    agent_kind: str = 'openhands'
+    user_id: str  # UUID of user who created the conversation
+    user_email: str | None = None  # Email of user who created the conversation
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    sandbox_id: str | None = None
+    sandbox_status: str | None = None  # STARTING, RUNNING, PAUSED, ERROR, MISSING
+    runtime_url: str | None = None  # URL to access the conversation runtime
+    execution_status: str | None = (
+        None  # Agent execution status (requires agent server call)
+    )
+    selected_repository: str | None = None
+    selected_branch: str | None = None
+    trigger: str | None = None
+    tags: dict[str, str] = Field(default_factory=dict)
+    # Cost and token metrics
+    accumulated_cost: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+
+class OrgConversationPage(BaseModel):
+    """Paginated response for organization conversations."""
+
+    items: list[OrgConversationResponse]
+    total_items: int = 0  # Total count for pagination controls
+    page: int = 1  # Current page number
+    per_page: int = 100  # Items per page
+    total_pages: int = 0  # Total number of pages
+    pagination_accurate: bool = (
+        True  # False when sandbox_status filter lacks sandbox data
+    )
+
+
+class OrgConversationStats(BaseModel):
+    """Aggregated statistics for organization conversations."""
+
+    # Conversation counts
+    active_conversations: int = (
+        0  # Count of conversations with execution_status='running'
+    )
+    running_runtimes: int = 0  # Count of distinct sandboxes currently running
+
+    # Completion metrics
+    completed_24h: int = 0  # Conversations that finished (terminal status) in last 24h
+    completed_7d: int = 0  # Conversations that finished in last 7 days
+    completed_30d: int = 0  # Conversations that finished in last 30 days
+
+    # Cost and usage aggregation
+    total_cost: float = 0.0  # Sum of accumulated_cost
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0  # Combined token count
+
+
+class DailyUsageData(BaseModel):
+    """Daily usage data for a single day."""
+
+    date: str  # ISO date string (YYYY-MM-DD)
+    tokens: int = 0
+    conversations: int = 0
+
+
+class TeamUsageData(BaseModel):
+    """Usage data for a single user/team."""
+
+    user_id: str
+    user_email: str | None = None
+    user_name: str | None = None
+    conversation_count: int = 0
+    total_tokens: int = 0
+    percentage: float = 0.0
+
+
+class OrgUsageStats(BaseModel):
+    """Detailed usage statistics for organization dashboard."""
+
+    # Top-level metrics
+    active_users: int = 0  # Users with activity in last 7 days
+    agent_runs: int = 0  # Total conversations in last 7 days
+    total_tokens: int = 0  # Total tokens in last 7 days
+    estimated_spend: float = 0.0  # Estimated cost in last 7 days
+
+    # Daily breakdown (last 7 days)
+    daily_usage: list[DailyUsageData] = Field(default_factory=list)
+
+    # Team breakdown (by user)
+    team_usage: list[TeamUsageData] = Field(default_factory=list)

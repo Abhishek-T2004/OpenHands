@@ -24,7 +24,8 @@ from openhands.agent_server.utils import utc_now
 from openhands.app_server.app_conversation.app_conversation_models import (
     AppConversationInfo,
 )
-from openhands.app_server.errors import ConcurrencyLimitError, SandboxError
+from openhands.app_server.errors import SandboxDeleteRetryError, SandboxError
+from openhands.app_server.sandbox import workspace_archive
 from openhands.app_server.sandbox.sandbox_models import (
     AGENT_SERVER,
     VSCODE,
@@ -43,10 +44,17 @@ from openhands.app_server.sandbox.sandbox_service import (
     SandboxServiceInjector,
 )
 from openhands.app_server.sandbox.sandbox_spec_models import SandboxSpecInfo
-from openhands.app_server.sandbox.sandbox_spec_service import SandboxSpecService
+from openhands.app_server.sandbox.sandbox_spec_service import (
+    SandboxSpecService,
+    resolve_sandbox_spec,
+)
 from openhands.app_server.services.injector import InjectorState
+from openhands.app_server.settings.settings_models import grouped_workspace_dir
 from openhands.app_server.user.specifiy_user_context import ADMIN, USER_CONTEXT_ATTR
 from openhands.app_server.user.user_context import UserContext
+from openhands.app_server.utils.docker_utils import (
+    replace_localhost_hostname_for_docker,
+)
 from openhands.app_server.utils.sql_utils import Base, UtcDateTime
 from openhands.sdk.utils.paging import page_iterator
 
@@ -211,21 +219,6 @@ class RemoteSandboxService(SandboxService):
         if user_id:
             query = query.where(StoredRemoteSandbox.created_by_user_id == user_id)
         return query
-
-    async def _get_user_effective_sandbox_limit(self) -> int:
-        """Get the effective sandbox limit for the current user.
-
-        Delegates to UserContext.get_max_concurrent_sandboxes() which handles:
-        1. OrgMember.max_concurrent_sandboxes_override (if not NULL) - enterprise only
-        2. Org.max_concurrent_sandboxes (org default) - enterprise only
-        3. Global fallback (self.max_num_sandboxes) - OSS mode
-
-        Returns:
-            int: The effective maximum number of concurrent sandboxes
-        """
-        return await self.user_context.get_max_concurrent_sandboxes(
-            self.max_num_sandboxes
-        )
 
     async def _get_stored_sandbox(self, sandbox_id: str) -> StoredRemoteSandbox | None:
         stmt = await self._secure_select()
@@ -428,35 +421,6 @@ class RemoteSandboxService(SandboxService):
         result = await self.db_session.execute(query)
         return list(result.scalars().all())
 
-    async def check_concurrency_limit(self) -> None:
-        """Check if the user has reached their concurrent sandbox limit.
-
-        Uses the runtime /list endpoint as the source of truth so that only
-        sandboxes that are actually running count against the limit.
-
-        Raises:
-            ConcurrencyLimitError: If the user has reached their limit
-        """
-        effective_limit = await self._get_user_effective_sandbox_limit()
-        current_count = len(await self._get_user_running_sandboxes())
-
-        if current_count >= effective_limit:
-            _logger.info(
-                f'User has reached sandbox limit: {current_count}/{effective_limit}'
-            )
-            raise ConcurrencyLimitError(
-                detail={
-                    'error': 'CONCURRENCY_LIMIT_REACHED',
-                    'message': (
-                        f'You have reached your limit of {effective_limit} '
-                        'concurrent conversations. Please close an existing '
-                        'conversation to start a new one.'
-                    ),
-                    'limit': effective_limit,
-                    'current': current_count,
-                }
-            )
-
     async def get_sandbox_record_by_session_api_key(
         self, session_api_key: str
     ) -> SandboxRecord | None:
@@ -483,33 +447,30 @@ class RemoteSandboxService(SandboxService):
     ) -> SandboxInfo:
         """Start a new sandbox by creating a remote runtime."""
         try:
-            if sandbox_spec_id is None:
-                sandbox_spec = (
-                    await self.sandbox_spec_service.get_default_sandbox_spec()
-                )
-            else:
-                sandbox_spec_maybe = await self.sandbox_spec_service.get_sandbox_spec(
-                    sandbox_spec_id
-                )
-                if sandbox_spec_maybe is None:
-                    raise ValueError('Sandbox Spec not found')
-                sandbox_spec = sandbox_spec_maybe
+            # Enforce sandbox limits by cleaning up old sandboxes
+            await self.pause_old_sandboxes(self.max_num_sandboxes - 1)
+
+            # Get sandbox spec
+            user_default_spec_id = await self.user_context.get_default_sandbox_spec_id()
+            sandbox_spec = await resolve_sandbox_spec(
+                sandbox_spec_id,
+                user_default_spec_id,
+                self.sandbox_spec_service,
+                _logger,
+            )
 
             if sandbox_id is None:
                 sandbox_id = base62.encodebytes(os.urandom(16))
 
+            # get user id
             user_id = await self.user_context.get_user_id()
-
-            # Check concurrency limit against actual runtime state (defense in depth;
-            # also checked before this call in live_status_app_conversation_service).
-            await self.check_concurrency_limit()
 
             # Commit the reads above before the /start call below so no
             # transaction spans the network I/O. The insert stays pending until
             # the request commits, keeping it atomic with the rest of the request.
             await self._release_db_transaction()
 
-            # Store the sandbox record
+            # Store the sandbox
             stored_sandbox = StoredRemoteSandbox(
                 id=sandbox_id,
                 created_by_user_id=user_id,
@@ -560,9 +521,6 @@ class RemoteSandboxService(SandboxService):
 
             return self._to_sandbox_info(stored_sandbox, runtime_data)
 
-        except ConcurrencyLimitError:
-            # Re-raise concurrency limit errors without wrapping
-            raise
         except httpx.HTTPError as e:
             _logger.error(f'Failed to start sandbox: {e}')
             raise SandboxError(f'Failed to start sandbox: {e}')
@@ -647,20 +605,51 @@ class RemoteSandboxService(SandboxService):
     async def delete_sandbox(self, sandbox_id: str) -> bool:
         """Delete a sandbox by stopping its runtime.
 
-        Security: Deleting the stored_sandbox record also removes the
-        session_api_key_hash, invalidating any leaked session keys.
+        Purely sandbox-scoped: stop the runtime and delete the record. Workspace
+        capture is a separate conversation-scoped step
+        (``archive_conversation_workspace``) the conversation-delete finalizer runs
+        BEFORE tearing the sandbox down — so a long archive never blocks this call
+        (and the direct sandbox DELETE route can't 504 on it).
+
+        If the runtime is already gone (paused/reaped/double-delete, a 404 from
+        the runtime API), the record is deleted directly to avoid orphaning it.
+
+        Returns False ONLY when the sandbox does not exist (router -> 404). A
+        transient runtime /stop / lookup failure raises ``SandboxDeleteRetryError``
+        (router -> 503) and keeps the row + runtime for a retry — so a live sandbox
+        is never reported as 404.
+
+        Security: the session_api_key_hash is invalidated UP FRONT (like
+        ``pause_sandbox`` clears it before pausing) so a delete — commonly a
+        revoke of a leaked key — kills it promptly. The invalidation is committed
+        (via ``_release_db_transaction``) before the runtime API calls, so no
+        transaction spans the network I/O and the caller's rollback on a transient
+        failure cannot resurrect the just-revoked key. The row is kept for retry.
         """
         try:
             stored_sandbox = await self._get_stored_sandbox(sandbox_id)
             if not stored_sandbox:
                 return False
-            # Commit the read before the network calls below; the delete stays
-            # pending until the request commits.
+            # Security: drop the key now, before the (fallible) runtime stop.
+            stored_sandbox.session_api_key_hash = None
+            # Commit the key invalidation and release the transaction before the
+            # network calls below so none spans runtime API I/O. Committing up
+            # front also persists the revoke immediately (fail-safe): a later
+            # rollback cannot bring the key back.
             await self._release_db_transaction()
-            # Deleting the record also removes the session_api_key_hash,
-            # which invalidates any leaked session keys.
-            await self.db_session.delete(stored_sandbox)
-            runtime_data = await self._get_runtime(sandbox_id)
+            try:
+                runtime_data = await self._get_runtime(sandbox_id)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code != 404:
+                    raise
+                # Runtime already gone: nothing to stop. Delete the orphaned row.
+                _logger.info(
+                    f'Runtime for sandbox {sandbox_id} already gone (404); '
+                    'deleting record'
+                )
+                await self.db_session.delete(stored_sandbox)
+                return True
+
             response = await self._send_runtime_api_request(
                 'POST',
                 '/stop',
@@ -668,10 +657,150 @@ class RemoteSandboxService(SandboxService):
             )
             if response.status_code != 404:
                 response.raise_for_status()
+            await self.db_session.delete(stored_sandbox)
             return True
         except httpx.HTTPError as e:
+            # Transient runtime lookup/stop failure: keep the row + runtime and
+            # signal retryable (503) — never a 404. The key invalidation was
+            # already committed before the network call above.
             _logger.error(f'Error deleting sandbox {sandbox_id}: {e}')
-            return False
+            raise SandboxDeleteRetryError(
+                f'Could not complete delete for sandbox {sandbox_id}: {e}'
+            ) from e
+
+    async def _resolve_archive_path(
+        self,
+        stored_sandbox: StoredRemoteSandbox,
+        conversation_id: str | None,
+        workspace_path: str | None,
+    ) -> str:
+        """Path to archive: the value pinned at conversation creation if present,
+        else rebuilt from the SAME base the clone used (the sandbox spec's
+        ``working_dir``) plus the grouping nesting.
+
+        Pre-pinning conversations have no pinned path; the legacy fallback re-reads
+        the live grouping strategy, which can disagree with creation if the user
+        toggled it — but a resulting 404 no longer silently tears the sandbox down
+        under REQUIRED (it blocks for the idle reap). Raises if the layout cannot
+        be resolved, so the caller never archives to the wrong path.
+        """
+        if workspace_path:
+            return workspace_path
+        # For cloud conversations the sandbox id is the conversation_id.hex.
+        conversation_key = conversation_id or stored_sandbox.id
+        sandbox_spec = await self.sandbox_spec_service.get_sandbox_spec(
+            stored_sandbox.sandbox_spec_id
+        )
+        if sandbox_spec is None:
+            raise SandboxError(
+                f'No sandbox spec {stored_sandbox.sandbox_spec_id} for archive'
+            )
+        grouping = (await self.user_context.get_user_info()).sandbox_grouping_strategy
+        return grouped_workspace_dir(
+            sandbox_spec.working_dir, grouping, conversation_key
+        )
+
+    async def _archive_workspace(
+        self,
+        stored_sandbox: StoredRemoteSandbox,
+        conversation_id: str | None,
+        runtime_data: dict,
+        workspace_path: str | None,
+    ) -> bool:
+        """Archive one workspace via the in-pod agent-server; return may-proceed.
+
+        Returns True when the workspace was captured, when there was nothing to
+        capture, or when archiving failed but is not REQUIRED. Returns False only
+        when archiving is REQUIRED and could not confirm a capture (the caller
+        decides whether to block + retry). Never raises.
+        """
+        try:
+            archive_path = await self._resolve_archive_path(
+                stored_sandbox, conversation_id, workspace_path
+            )
+            # The runtime url is raw (localhost in Docker/local); transform it the
+            # same way every other agent-server URL resolution does.
+            runtime = dict(runtime_data)
+            url = runtime.get('url')
+            if url:
+                runtime['url'] = replace_localhost_hostname_for_docker(url)
+            return await workspace_archive.archive_workspace(
+                self.httpx_client,
+                runtime,
+                stored_sandbox.id,
+                archive_path=archive_path,
+                conversation_id=conversation_id,
+            )
+        except Exception:
+            # Could not resolve the workspace layout: never archive to the wrong
+            # path. Honor REQUIRED (block + retry) vs best-effort (proceed).
+            _logger.exception(
+                'Could not resolve archive path for %s', stored_sandbox.id
+            )
+            return not workspace_archive.archive_required()
+
+    async def archive_conversation_workspace(
+        self,
+        sandbox_id: str,
+        conversation_id: str | None = None,
+        workspace_path: str | None = None,
+    ) -> bool:
+        """Archive ONE conversation's workspace; return whether delete may proceed.
+
+        The sole app-server capture path: the conversation-delete finalizer calls
+        this for every conversation delete (while the runtime is still up), then
+        tears the sandbox down only when this was its last conversation. Keying to
+        the conversation lets a grouped sandbox capture the right per-conversation
+        repo, and means no grouped conversation's work is lost when a sibling later
+        triggers the sandbox delete.
+
+        ``workspace_path`` is the path pinned at conversation creation; when given
+        the capture uses it verbatim instead of re-deriving the layout.
+
+        Returns True when the workspace was captured, when there was nothing to
+        capture (runtime already gone, or no repo at the path), or when archiving
+        failed but is not REQUIRED. Returns False only when archiving is REQUIRED
+        and could not confirm a capture, so the finalizer keeps the sandbox +
+        running runtime for the runtime-api idle reap (the durability backstop).
+        Never raises. No-op (returns True) unless archiving is enabled.
+        """
+        if not workspace_archive.archive_enabled():
+            return True
+        try:
+            stored_sandbox = await self._get_stored_sandbox(sandbox_id)
+            if not stored_sandbox:
+                return True
+            runtime_data = await self._get_runtime(sandbox_id)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Runtime already gone: nothing to capture for this conversation.
+                return True
+            # Couldn't reach the runtime: honor REQUIRED (block + keep) vs
+            # best-effort (let the delete proceed; delete_sandbox re-checks).
+            _logger.exception(
+                'Workspace archive lookup failed for %s (%s)',
+                sandbox_id,
+                conversation_id,
+            )
+            return not workspace_archive.archive_required()
+        except Exception:
+            _logger.exception(
+                'Workspace archive lookup failed for %s (%s)',
+                sandbox_id,
+                conversation_id,
+            )
+            return not workspace_archive.archive_required()
+        archived = await self._archive_workspace(
+            stored_sandbox, conversation_id, runtime_data, workspace_path
+        )
+        if not archived:
+            _logger.warning(
+                'Workspace archive required but failed for %s (%s); keeping the '
+                'sandbox for the idle reap to capture',
+                sandbox_id,
+                conversation_id,
+            )
+        return archived
 
     async def pause_old_sandboxes(self, max_num_sandboxes: int) -> list[str]:
         """Pause the oldest running sandboxes until at most max_num_sandboxes remain.
@@ -704,7 +833,11 @@ class RemoteSandboxService(SandboxService):
     async def batch_get_sandboxes(
         self, sandbox_ids: list[str]
     ) -> list[SandboxInfo | None]:
-        """Get a batch of sandboxes, returning None for any which were not found."""
+        """Get a batch of sandboxes, returning None for any which were not found.
+
+        Falls back to returning sandboxes with missing/unknown runtime status if the
+        runtime API is unavailable, rather than failing the entire batch request.
+        """
         if not sandbox_ids:
             return []
         query = await self._secure_select()
@@ -714,10 +847,24 @@ class RemoteSandboxService(SandboxService):
             stored_remote_sandbox[0].id: stored_remote_sandbox[0]
             for stored_remote_sandbox in stored_remote_sandboxes
         }
+
+        # Release the request transaction before the runtime API call below so
+        # no transaction spans network I/O.
         await self._release_db_transaction()
-        runtimes_by_id = await self._get_runtimes_batch(
-            list(stored_remote_sandboxes_by_id)
-        )
+
+        # Gracefully handle runtime API failures by falling back to empty runtimes.
+        # This mirrors the behavior of get_sandbox which falls back to runtime=None.
+        try:
+            runtimes_by_id = await self._get_runtimes_batch(
+                list(stored_remote_sandboxes_by_id)
+            )
+        except Exception:
+            _logger.exception(
+                'Error getting runtimes batch, falling back to empty runtimes',
+                stack_info=True,
+            )
+            runtimes_by_id = {}
+
         results = []
         for sandbox_id in sandbox_ids:
             stored_remote_sandbox = stored_remote_sandboxes_by_id.get(sandbox_id)
