@@ -259,6 +259,12 @@ async def archive_workspace(
     # symptom this feature most needs to guard against, not "nothing to archive".
     unconfirmed_capture = False
     base_commit = ''
+    # Repo identity rides the response headers (empty against an agent-server
+    # image predating them — graceful) and is reused across formats so each
+    # manifest is self-describing (repo / branch / captured HEAD).
+    repo_remote = ''
+    branch = ''
+    head_commit = ''
     # One store per call (not per format) — building it lazily spins up a client.
     store = _get_archive_file_store()
     for fmt in formats:
@@ -301,6 +307,13 @@ async def archive_workspace(
                 header_base = response.headers.get('X-Archive-Base-Commit', '')
                 if header_base:
                     base_commit = header_base
+                repo_remote = (
+                    response.headers.get('X-Archive-Repo-Remote', '') or repo_remote
+                )
+                branch = response.headers.get('X-Archive-Branch', '') or branch
+                head_commit = (
+                    response.headers.get('X-Archive-Head-Commit', '') or head_commit
+                )
                 # Stream to disk so the archive never sits whole in RAM.
                 tmp_path, byte_count = await _stream_to_tempfile(response)
         except Exception as e:
@@ -323,6 +336,9 @@ async def archive_workspace(
                     'conversation_id': conversation_key,
                     'phase': 'final',
                     'base_commit': base_commit,
+                    'repo_remote': repo_remote,
+                    'branch': branch,
+                    'head_commit': head_commit,
                     'format': fmt,
                     'source_path': archive_path,
                     'byte_count': byte_count,
@@ -471,6 +487,9 @@ async def archive_initial_workspace(
             captured_base = (
                 response.headers.get('X-Archive-Base-Commit', '') or base_commit
             )
+            repo_remote = response.headers.get('X-Archive-Repo-Remote', '')
+            branch = response.headers.get('X-Archive-Branch', '')
+            head_commit = response.headers.get('X-Archive-Head-Commit', '')
             # Stream to disk so the archive never sits whole in RAM.
             tmp_path, byte_count = await _stream_to_tempfile(response)
     except Exception as e:
@@ -498,6 +517,9 @@ async def archive_initial_workspace(
                 'conversation_id': conversation_key,
                 'phase': 'initial',
                 'base_commit': captured_base,
+                'repo_remote': repo_remote,
+                'branch': branch,
+                'head_commit': head_commit,
                 'format': fmt,
                 'source_path': project_dir,
                 'byte_count': byte_count,

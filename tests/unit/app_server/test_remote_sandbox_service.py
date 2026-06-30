@@ -2101,7 +2101,14 @@ class TestArchiveWorkspaceHelper:
 
         client = _stream_client(
             _make_stream_response(
-                200, b'patch-bytes', {'X-Archive-Base-Commit': 'abc123'}
+                200,
+                b'patch-bytes',
+                {
+                    'X-Archive-Base-Commit': 'abc123',
+                    'X-Archive-Repo-Remote': 'https://github.com/example/repo.git',
+                    'X-Archive-Branch': 'feature-x',
+                    'X-Archive-Head-Commit': 'def456',
+                },
             )
         )
         store = MagicMock()
@@ -2139,6 +2146,10 @@ class TestArchiveWorkspaceHelper:
         assert manifest['base_commit'] == 'abc123'
         assert manifest['conversation_id'] == 'conv-1'
         assert manifest['source_path'] == '/workspace/project'
+        # Repo identity from the response headers makes the blob self-describing.
+        assert manifest['repo_remote'] == 'https://github.com/example/repo.git'
+        assert manifest['branch'] == 'feature-x'
+        assert manifest['head_commit'] == 'def456'
 
     @pytest.mark.asyncio
     async def test_archive_missing_base_commit_header_defaults_empty(self, monkeypatch):
@@ -2171,6 +2182,10 @@ class TestArchiveWorkspaceHelper:
         manifest_path = next(p for p in writes if p.endswith('.manifest.json'))
         manifest = json.loads(writes[manifest_path])
         assert manifest['base_commit'] == ''
+        # Repo identity also degrades gracefully when the headers are absent.
+        assert manifest['repo_remote'] == ''
+        assert manifest['branch'] == ''
+        assert manifest['head_commit'] == ''
         # Prod case: delete_sandbox passes no conversation_id, so the manifest
         # falls back to the sandbox id (which is the conversation_id.hex).
         assert manifest['conversation_id'] == 'sandbox-1'
@@ -2530,7 +2545,17 @@ class TestArchiveInitialWorkspaceHelper:
         monkeypatch.setenv('RUNTIME_FILE_ARCHIVE_INITIAL_ENABLED', 'true')
         monkeypatch.setenv('RUNTIME_FILE_ARCHIVE_BUCKET', 'archive-bkt')
 
-        client = _stream_client(_make_stream_response(200, b'tar-bytes', {}))
+        client = _stream_client(
+            _make_stream_response(
+                200,
+                b'tar-bytes',
+                {
+                    'X-Archive-Repo-Remote': 'https://github.com/example/repo.git',
+                    'X-Archive-Branch': 'feature-x',
+                    'X-Archive-Head-Commit': 'def456',
+                },
+            )
+        )
         store = MagicMock()
         writes: dict[str, bytes] = {}
         store.write.side_effect = lambda path, data: writes.__setitem__(path, data)
@@ -2577,6 +2602,10 @@ class TestArchiveInitialWorkspaceHelper:
         assert manifest['conversation_id'] == 'conv-1'
         assert manifest['format'] == 'tar.gz'
         assert manifest['source_path'] == '/workspace/project/repo'
+        # Repo identity from the tar.gz response headers (self-describing snapshot).
+        assert manifest['repo_remote'] == 'https://github.com/example/repo.git'
+        assert manifest['branch'] == 'feature-x'
+        assert manifest['head_commit'] == 'def456'
 
     @pytest.mark.asyncio
     async def test_archive_sibling_conversations_distinct_keys(self, monkeypatch):
