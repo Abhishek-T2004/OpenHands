@@ -1732,7 +1732,7 @@ class TestSendRepoSelectionComment:
             'Could not access any of the mentioned repositories: company/repo'
             in call_args[0]
         )
-        assert 'OpenHands account has access' in call_args[0]
+        assert 'Git account linked to your OpenHands user can access it' in call_args[0]
 
     @pytest.mark.asyncio
     async def test_send_repo_selection_comment_send_fails(

@@ -55,6 +55,10 @@ def test_markdown_to_jira_markup():
         ('# Header', 'h1. Header'),
         ('`code`', '{{code}}'),
         ('```python\ncode\n```', '{code:python}\ncode\n{code}'),
+        # Unsupported languages (e.g. text) fall back to a plain {code} block so
+        # Jira doesn't warn "no source-code formatter for language: text".
+        ('```text\nplain\n```', '{code}\nplain\n{code}'),
+        ('```TEXT\nx\n```', '{code}\nx\n{code}'),
         ('[link](url)', '[link|url]'),
         ('- item', '* item'),
         ('1. item', '# item'),

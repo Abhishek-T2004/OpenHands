@@ -312,10 +312,54 @@ def markdown_to_jira_markup(markdown_text: str) -> str:
         text = re.sub(r'^#{2}\s+(.*?)$', r'h2. \1', text, flags=re.MULTILINE)
         text = re.sub(r'^#{1}\s+(.*?)$', r'h1. \1', text, flags=re.MULTILINE)
 
-        # Convert code blocks first (before other formatting)
-        text = re.sub(
-            r'```(\w+)\n(.*?)\n```', r'{code:\1}\n\2\n{code}', text, flags=re.DOTALL
-        )
+        # Convert code blocks first (before other formatting). Jira's {code}
+        # macro only supports a fixed language set; fall back to a plain {code}
+        # for anything else (e.g. ```text) so Jira doesn't show a "no
+        # source-code formatter for language: X" warning.
+        jira_code_langs = {
+            'actionscript',
+            'ada',
+            'applescript',
+            'bash',
+            'c',
+            'c#',
+            'c++',
+            'cpp',
+            'css',
+            'erlang',
+            'go',
+            'groovy',
+            'haskell',
+            'html',
+            'java',
+            'javascript',
+            'js',
+            'json',
+            'lua',
+            'none',
+            'nyan',
+            'objc',
+            'perl',
+            'php',
+            'python',
+            'r',
+            'rainbow',
+            'ruby',
+            'scala',
+            'sh',
+            'sql',
+            'swift',
+            'visualbasic',
+            'xml',
+            'yaml',
+        }
+
+        def _code_block(m):
+            lang = m.group(1).lower()
+            header = f'{{code:{lang}}}' if lang in jira_code_langs else '{code}'
+            return f'{header}\n{m.group(2)}\n{{code}}'
+
+        text = re.sub(r'```(\w+)\n(.*?)\n```', _code_block, text, flags=re.DOTALL)
         text = re.sub(r'```\n(.*?)\n```', r'{code}\n\1\n{code}', text, flags=re.DOTALL)
 
         # Convert inline code (`code`)

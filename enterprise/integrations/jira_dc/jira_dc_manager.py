@@ -390,14 +390,19 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
         job_context = self.parse_webhook(payload, bot_mentions)
 
         if not job_context:
-            # When a [~...] picker mention was present but didn't resolve to the
-            # bot, log a truncated body + the mention tokens to diagnose a
-            # format/identity mismatch. Gated + truncated because the webhook is
-            # instance-wide and comment bodies can hold sensitive content.
+            # Log the body only for a non-matching comment that references the
+            # bot itself (name 'openhands' or a resolved bot id) -- the FDE-84
+            # "mention didn't fire" case. Skips unrelated comments / mentions of
+            # other users on this instance-wide webhook. Truncated since bodies
+            # can hold sensitive content.
             comment = (payload.get('comment') or {}).get('body', '') or ''
-            if payload.get('webhookEvent') == 'comment_created' and '[~' in comment:
+            lowered = comment.lower()
+            refs_bot = 'openhands' in lowered or any(
+                i in lowered for i in (bot_mentions or ())
+            )
+            if payload.get('webhookEvent') == 'comment_created' and refs_bot:
                 logger.info(
-                    '[Jira DC] picker mention did not resolve to the bot '
+                    '[Jira DC] comment references the bot but did not trigger '
                     '(bot_ids_resolved=%s mention_tokens=%s) body=%r',
                     bool(bot_mentions),
                     _JIRA_MENTION_RE.findall(comment),
@@ -1012,8 +1017,8 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
             if not mentioned_repos:
                 comment_msg = (
                     'Could not determine which repository to use. '
-                    'Please mention the repository (e.g., owner/repo) in the issue '
-                    'description or comment.'
+                    'Please mention the repository (e.g., owner/repo or a '
+                    'repository URL) in the issue description or comment.'
                 )
             elif len(matched_repo_names) > 1:
                 comment_msg = (
@@ -1025,8 +1030,8 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
                 comment_msg = (
                     f'Could not access any of the mentioned repositories: '
                     f'{", ".join(mentioned_repos)}. '
-                    'Please ensure your OpenHands account has access to the '
-                    'repository and it exists.'
+                    'Please ensure the repository exists and that the Git account '
+                    'linked to your OpenHands user can access it.'
                 )
 
             service_account = resolve_jira_dc_service_account(
