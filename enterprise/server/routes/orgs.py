@@ -1081,7 +1081,6 @@ async def get_org_members_financial(
         )
 
 
-
 def _build_budget_response(state: dict) -> OrgBudgetSettingsResponse:
     settings = state['settings']
     thresholds = state['thresholds']
@@ -2004,7 +2003,6 @@ async def get_org_conversation_user_usage_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail='Failed to retrieve organization user usage stats',
         )
-
 
 
 @org_router.get(

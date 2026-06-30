@@ -661,7 +661,6 @@ class OrgMemberFinancialPage(BaseModel):
     next_page_id: str | None = None
 
 
-
 class OrgBudgetThresholdResponse(BaseModel):
     id: int
     percentage: int
@@ -853,9 +852,6 @@ class OrgUserUsageStats(BaseModel):
     """Detailed usage stats by user for the admin dashboard."""
 
     items: list[OrgUserUsageRow] = Field(default_factory=list)
-
-
-
 
 
 class ModelUsageData(BaseModel):

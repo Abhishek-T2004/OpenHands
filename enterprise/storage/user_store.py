@@ -178,7 +178,6 @@ class UserStore:
             user.last_login_at = now
             await session.commit()
 
-
     @staticmethod
     def _get_redis_client():
         """Get the shared async Redis client from enterprise storage."""
