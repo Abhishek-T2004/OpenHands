@@ -31,6 +31,8 @@ class User(Base):
     current_org_id: Mapped[UUID] = mapped_column(ForeignKey('org.id'), nullable=False)
     role_id: Mapped[int | None] = mapped_column(ForeignKey('role.id'), nullable=True)
     accepted_tos: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     enable_sound_notifications: Mapped[bool | None] = mapped_column(nullable=True)
     language: Mapped[str | None] = mapped_column(String, nullable=True)
     user_consents_to_analytics: Mapped[bool | None] = mapped_column(nullable=True)

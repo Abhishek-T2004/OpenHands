@@ -443,6 +443,9 @@ async def keycloak_callback(
         response = RedirectResponse(verification_redirect_url, status_code=302)
         return response
 
+    await UserStore.record_login(user_id)
+
+
     # default to github IDP for now.
     # TODO: remove default once Keycloak is updated universally with the new attribute.
     idp: str = user_info.identity_provider or ProviderType.GITHUB.value
