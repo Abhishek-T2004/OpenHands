@@ -896,7 +896,10 @@ async def accept_tos(request: Request):
 
     if not access_token or not refresh_token or not user_id:
         logger.warning(
-            f'accept_tos: One or more is None: access_token {access_token}, refresh_token {refresh_token}, user_id {user_id}'
+            'accept_tos: One or more is None: access_token %s, refresh_token %s, user_id %s',
+            access_token,
+            refresh_token,
+            user_id,
         )
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,

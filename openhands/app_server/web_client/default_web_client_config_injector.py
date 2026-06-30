@@ -123,7 +123,7 @@ def _get_slack_enabled() -> bool:
 def _get_email_enabled() -> bool:
     """Return whether transactional email delivery is configured."""
     try:
-        from enterprise.server.services.email_service import EmailService
+        from server.services.email_service import EmailService
     except Exception:
         return bool(os.getenv('RESEND_API_KEY', '').strip())
     return EmailService.is_configured()

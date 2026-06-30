@@ -722,7 +722,7 @@ class TestGetEmailEnabled:
         )
 
         with patch(
-            'enterprise.server.services.email_service.EmailService.is_configured',
+            'server.services.email_service.EmailService.is_configured',
             return_value=True,
         ):
             assert _get_email_enabled() is True
@@ -734,7 +734,7 @@ class TestGetEmailEnabled:
         )
 
         with patch(
-            'enterprise.server.services.email_service.EmailService.is_configured',
+            'server.services.email_service.EmailService.is_configured',
             return_value=False,
         ):
             assert _get_email_enabled() is False
