@@ -20,10 +20,12 @@ from integrations.jira_dc.jira_dc_view import (
 from integrations.manager import Manager
 from integrations.models import JobContext, Message
 from integrations.utils import (
+    HOST,
     HOST_URL,
     OPENHANDS_RESOLVER_TEMPLATES_DIR,
     get_account_not_linked_message,
     get_jira_dc_relink_message,
+    get_oh_labels,
     get_session_expired_message,
     get_user_not_found_message,
     has_exact_mention,
@@ -48,6 +50,10 @@ from openhands.app_server.types import (
 from openhands.app_server.user_auth.user_auth import UserAuth
 from openhands.app_server.utils.http_session import httpx_verify_option
 from openhands.app_server.utils.logger import openhands_logger as logger
+
+# Trigger macro (label + @mention), configurable per deployment via
+# OH_RESOLVER_LABEL / host inference -- matches the other integrations.
+OH_LABEL, INLINE_OH_LABEL = get_oh_labels(HOST)
 
 # Unicode codepoint of the emoji reaction posted to acknowledge an @openhands
 # mention via Jira's internal reactions API. 1f44d = 👍 (thumbs up). Note:
@@ -122,7 +128,7 @@ def _comment_addresses_openhands(comment: str, bot_ids: set[str] | None) -> bool
         return False
     # Boundary-aware + case-insensitive: matches @OpenHands but not an email like
     # someone@openhands.dev (incl. the service account's own address).
-    if has_exact_mention(comment, '@openhands'):
+    if has_exact_mention(comment, INLINE_OH_LABEL):
         return True
     if bot_ids:
         return any(
@@ -335,7 +341,7 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
                 if item.get('field') == 'labels' and 'toString' in item
             ]
 
-            if 'openhands' not in labels:
+            if OH_LABEL not in labels:
                 return None
 
             issue_data = payload.get('issue', {})
@@ -397,7 +403,7 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
             # can hold sensitive content.
             comment = (payload.get('comment') or {}).get('body', '') or ''
             lowered = comment.lower()
-            refs_bot = 'openhands' in lowered or any(
+            refs_bot = OH_LABEL in lowered or any(
                 i in lowered for i in (bot_mentions or ())
             )
             if payload.get('webhookEvent') == 'comment_created' and refs_bot:
@@ -632,7 +638,7 @@ class JiraDcManager(Manager[JiraDcViewInterface]):
         comment re-attempts resolution (this event is dropped, not retried).
         """
         comment = (payload.get('comment') or {}).get('body', '') or ''
-        if has_exact_mention(comment, '@openhands') or '[~' not in comment:
+        if has_exact_mention(comment, INLINE_OH_LABEL) or '[~' not in comment:
             return None
         try:
             base_api_url = (
