@@ -235,11 +235,12 @@ class TestAgentProfileRouterLifecycle:
         assert profile_id is not None
         assert listing.profiles[0].llm_profile_ref == 'Default'
 
-        # get detail
+        # get detail (profile is the typed discriminated union, not a dict)
         detail = await get_agent_profile(
             name='reviewer', effective_org_id=org_id, user_id=uid
         )
-        assert detail.profile['llm_profile_ref'] == 'Default'
+        assert detail.profile.agent_kind == 'openhands'
+        assert detail.profile.llm_profile_ref == 'Default'
 
         # overwrite bumps revision, keeps id
         await save_agent_profile(
@@ -387,7 +388,9 @@ class TestMaskedMcpSecretRestore:
         detail = await get_agent_profile(
             name='with-mcp', effective_org_id=org_id, user_id=uid
         )
-        fetched_skill = detail.profile['skills'][0]
+        # Round-trip through the JSON dump the client would receive and edit.
+        fetched = detail.profile.model_dump(mode='json')
+        fetched_skill = fetched['skills'][0]
         assert (
             fetched_skill['mcp_tools']['mcpServers']['server-a']['env']['API_KEY']
             == '<redacted>'
@@ -432,6 +435,18 @@ class TestAgentProfileRouterErrors:
                 name='nope', effective_org_id=patch_agent_routes, user_id=str(USER_ID)
             )
         assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_missing_is_idempotent_200(self, patch_agent_routes):
+        # A missing name resolves 200 (no raise), matching the ts-client
+        # AgentProfilesClient contract and the local agent-server delete_profile.
+        # Canvas's delete mutation has no 404 branch.
+        resp = await delete_agent_profile(
+            name='never-existed',
+            effective_org_id=patch_agent_routes,
+            user_id=str(USER_ID),
+        )
+        assert resp.name == 'never-existed'
 
     @pytest.mark.asyncio
     async def test_activate_unknown_id_404(self, patch_agent_routes):

@@ -55,6 +55,7 @@ from openhands.app_server.settings.agent_profiles import (
 from openhands.app_server.utils.logger import openhands_logger as logger
 from openhands.sdk.profiles import (
     ACPAgentProfile,
+    AgentProfile,
     AgentProfileDiagnostics,
     OpenHandsAgentProfile,
     ProfileLimitExceeded,
@@ -104,7 +105,10 @@ class AgentProfileListResponse(BaseModel):
 
 class AgentProfileDetailResponse(BaseModel):
     name: str
-    profile: dict[str, Any]
+    # The stored profile, ``skills[].mcp_tools`` secrets masked. Typed as the SDK
+    # discriminated union (not ``dict``) so the OpenAPI schema matches the
+    # ``AgentProfile`` the ts-client consumes.
+    profile: AgentProfile
 
 
 class AgentProfileMutationResponse(BaseModel):
@@ -281,6 +285,8 @@ async def _seed_default_agent_profile(org_id: UUID, user_id: str) -> str | None:
     settings = await SaasSettingsStore(user_id, effective_org_id=org_id).load()
     if settings is None:
         return None
+    # First caller wins: non-member-private fields (skills, condenser, ...) are
+    # captured from the acting member's composed settings as the org default.
     seed = build_seed_profile(settings.agent_settings, settings.llm_profiles.active)
     async with _agent_profiles_transaction(org_id, user_id) as (
         session,
@@ -348,7 +354,13 @@ async def get_agent_profile(
     effective_org_id: UUID = EFFECTIVE_ORG_ID,
     user_id: str = Depends(require_permission(Permission.VIEW_ORG_SETTINGS)),
 ) -> AgentProfileDetailResponse:
-    """Get a stored profile. ``skills[].mcp_tools`` secrets are masked."""
+    """Get a stored profile; ``skills[].mcp_tools`` secrets are masked.
+
+    Cloud always masks — the ``X-Expose-Secrets`` header is not honored here
+    (unlike the local agent-server), mirroring the LLM-profile GET in
+    ``org_profiles``. Edits stay non-destructive: ``save_agent_profile``
+    restores masked ``mcp_tools`` from the stored blob.
+    """
     org = await _get_org(effective_org_id, user_id)
     profiles = load_agent_profiles(org)
     try:
@@ -358,8 +370,7 @@ async def get_agent_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent profile '{name}' not found",
         )
-    # Default context => mcp_tools env/headers masked; the API never returns raw
-    # secrets (the EncryptedJSON column is the only place they live in the clear).
+    # Default (no expose_secrets) context => mcp_tools env/headers masked.
     return AgentProfileDetailResponse(
         name=name, profile=profile.model_dump(mode='json')
     )
@@ -432,32 +443,35 @@ async def delete_agent_profile(
     effective_org_id: UUID = EFFECTIVE_ORG_ID,
     user_id: str = Depends(require_permission(Permission.EDIT_ORG_SETTINGS)),
 ) -> AgentProfileMutationResponse:
-    """Delete a profile. Clears every org member's active pointer if it matched."""
+    """Delete a profile (idempotent). Clears every org member's pointer to it.
+
+    A missing name resolves 200, matching the ts-client ``AgentProfilesClient``
+    contract and the local agent-server ``delete_profile`` (canvas's delete
+    mutation has no 404 branch).
+    """
     async with _agent_profiles_transaction(effective_org_id, user_id) as (
         session,
         _org,
         profiles,
     ):
-        try:
-            deleted = profiles.load(name)
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Agent profile '{name}' not found",
-            )
-        deleted_id = str(deleted.id)
+        # Capture the id (if present) before deleting so the per-member pointer
+        # clear still runs; ``profiles.delete`` is itself a no-op when absent.
+        deleted_id: str | None = None
+        with contextlib.suppress(FileNotFoundError):
+            deleted_id = str(profiles.load(name).id)
         profiles.delete(name)
-        # Clear the pointer for every member who had this profile active, not
-        # just the acting member — activation is per-member, so any other
-        # member could be pointing at the now-deleted id.
-        await session.execute(
-            update(OrgMember)
-            .where(
-                OrgMember.org_id == effective_org_id,
-                OrgMember.active_agent_profile_id == deleted_id,
+        if deleted_id is not None:
+            # Clear the pointer for every member who had this profile active, not
+            # just the acting member — activation is per-member, so any other
+            # member could be pointing at the now-deleted id.
+            await session.execute(
+                update(OrgMember)
+                .where(
+                    OrgMember.org_id == effective_org_id,
+                    OrgMember.active_agent_profile_id == deleted_id,
+                )
+                .values(active_agent_profile_id=None)
             )
-            .values(active_agent_profile_id=None)
-        )
 
     logger.info("Deleted agent profile '%s' for org %s", name, effective_org_id)
     return AgentProfileMutationResponse(
