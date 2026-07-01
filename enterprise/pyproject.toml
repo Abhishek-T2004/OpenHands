@@ -22,10 +22,6 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.12,<3.14"
 openhands-ai = { path = "../", develop = true }
-# TODO(agent-profiles-cloud, #15060): see the matching TODO in ../pyproject.toml
-# — direct override needed here too since poetry doesn't propagate a path
-# dependency's own source overrides into this project's lock resolution.
-openhands-sdk = { git = "https://github.com/OpenHands/software-agent-sdk.git", rev = "feca62017e2d33519c953b83f3747ded6b96329d", subdirectory = "openhands-sdk" }
 authlib = ">=1.6.12,<1.7"
 gspread = "^6.1.4"
 alembic = "^1.14.1"
@@ -105,6 +101,3 @@ omit = [ "tests/*" ]
 [tool.uv]
 exclude-newer = "7 days"
 exclude-newer-package = { openhands-agent-server = false, openhands-sdk = false, openhands-tools = false }
-
-[tool.uv.sources]
-openhands-sdk = { git = "https://github.com/OpenHands/software-agent-sdk.git", rev = "feca62017e2d33519c953b83f3747ded6b96329d", subdirectory = "openhands-sdk" }
