@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
@@ -7,126 +6,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, SecretStr, field_validator
 from server.auth.org_context import EFFECTIVE_ORG_ID
 from server.auth.saas_user_auth import SaasUserAuth
-from server.constants import LITE_LLM_API_URL
 from storage.api_key import ApiKey
 from storage.api_key_store import ApiKeyStore
-from storage.lite_llm_manager import LiteLlmManager, get_openhands_cloud_key_alias
+from storage.lite_llm_manager import LiteLlmManager
 from storage.org_member import OrgMember
 from storage.org_member_store import OrgMemberStore
 from storage.org_service import OrgService
-from storage.saas_settings_store import SaasSettingsStore
+from storage.saas_settings_store import (
+    ManagedLlmKeyStatus,
+    SaasSettingsStore,
+)
 from storage.user_store import UserStore
 
 from openhands.app_server.user_auth import get_user_auth, get_user_id
 from openhands.app_server.user_auth.user_auth import AuthType
-from openhands.app_server.utils.llm import is_openhands_model
 from openhands.app_server.utils.logger import openhands_logger as logger
-
-
-@dataclass(frozen=True)
-class ManagedLlmKeyConfig:
-    openhands_type: bool
-
-
-def _find_org_member(user, org_id: UUID) -> OrgMember | None:
-    """Find the user's membership for an org."""
-    for member in user.org_members:
-        if member.org_id == org_id:
-            return member
-    return None
-
-
-def _managed_llm_key_config_from_model(
-    llm_model: str | None, llm_base_url: str | None
-) -> ManagedLlmKeyConfig | None:
-    openhands_type = is_openhands_model(llm_model)
-    normalized_llm_base_url = llm_base_url.rstrip('/') if llm_base_url else None
-    normalized_managed_base_url = (
-        LITE_LLM_API_URL.rstrip('/') if LITE_LLM_API_URL else None
-    )
-    uses_managed_llm_key = (
-        normalized_managed_base_url is not None
-        and normalized_llm_base_url == normalized_managed_base_url
-    ) or (normalized_llm_base_url is None and openhands_type)
-    if not uses_managed_llm_key:
-        return None
-    return ManagedLlmKeyConfig(openhands_type=openhands_type)
-
-
-async def get_effective_managed_llm_key_config(
-    user_id: str, org_id: UUID
-) -> ManagedLlmKeyConfig | None:
-    settings_store = await SaasSettingsStore.get_instance(
-        user_id, effective_org_id=org_id
-    )
-    settings = await settings_store.load()
-    if settings is None:
-        return None
-    llm_settings = settings.agent_settings.llm
-    return _managed_llm_key_config_from_model(llm_settings.model, llm_settings.base_url)
-
-
-async def get_managed_llm_key_from_db(user_id: str, org_id: UUID) -> str | None:
-    """Get the managed OpenHands LiteLLM key for a user/org.
-
-    Returns None for missing users/members, missing keys, and BYOK members.
-    Callers that need to distinguish these states should load the OrgMember directly.
-    """
-    user = await UserStore.get_user_by_id(user_id)
-    if not user:
-        return None
-
-    org_member = _find_org_member(user, org_id)
-    if not org_member or org_member.has_custom_llm_api_key:
-        return None
-    if org_member.llm_api_key:
-        return org_member.llm_api_key.get_secret_value()
-    return None
-
-
-async def store_managed_llm_key_in_db(user_id: str, org_id: UUID, key: str) -> bool:
-    """Store the managed OpenHands LiteLLM key for a user/org."""
-    user = await UserStore.get_user_by_id(user_id)
-    if not user:
-        return False
-
-    org_member = _find_org_member(user, org_id)
-    if not org_member:
-        return False
-    org_member.llm_api_key = SecretStr(key)
-    org_member.has_custom_llm_api_key = False
-    await OrgMemberStore.update_org_member(org_member)
-    return True
-
-
-async def generate_managed_llm_key(
-    user_id: str, org_id: UUID, *, openhands_type: bool = False
-) -> str | None:
-    """Generate a managed OpenHands LiteLLM key for a user/org."""
-    try:
-        org_id_str = str(org_id)
-        key = await LiteLlmManager.generate_key(
-            user_id,
-            org_id_str,
-            get_openhands_cloud_key_alias(user_id, org_id_str),
-            {'type': 'openhands'} if openhands_type else None,
-        )
-        logger.info(
-            'Successfully generated new managed LLM key',
-            extra={
-                'user_id': user_id,
-                'org_id': org_id_str,
-                'key_length': len(key),
-                'key_prefix': key[:10] + '...' if len(key) > 10 else key,
-            },
-        )
-        return key
-    except Exception as e:
-        logger.exception(
-            'Error generating managed LLM key',
-            extra={'user_id': user_id, 'org_id': str(org_id), 'error': str(e)},
-        )
-        return None
 
 
 # Helper functions for BYOR API key management
@@ -451,10 +345,13 @@ async def refresh_managed_llm_api_key(
 ) -> ManagedLlmApiKeyRefreshResponse:
     """Refresh the managed OpenHands LiteLLM key for the current user/org.
 
-    This endpoint intentionally refuses to operate on BYOK/custom keys. It
-    generates and persists the replacement before best-effort deletion of the
-    previous key to avoid leaving the member with a stored key that no longer
-    exists in LiteLLM.
+    Delegates the full managed-key lifecycle (effective-config classification,
+    alias cleanup, key generation with OpenHands metadata, and persistence) to
+    ``SaasSettingsStore.rotate_managed_llm_key`` so the route does not
+    duplicate the storage-layer machinery. Only managed LiteLLM/OpenHands-
+    provider effective configs are rotated; BYOK/custom and non-managed configs
+    are rejected before any key is generated. The previous key token is deleted
+    best-effort only after the replacement is persisted.
     """
     logger.info(
         'Starting managed LLM API key refresh',
@@ -462,59 +359,33 @@ async def refresh_managed_llm_api_key(
     )
 
     try:
-        user = await UserStore.get_user_by_id(user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f'User {user_id} not found',
-            )
-
-        org_member = _find_org_member(user, effective_org_id)
-        if not org_member:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f'User {user_id} is not a member of org {effective_org_id}',
-            )
-
-        if org_member.has_custom_llm_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail='Cannot refresh a custom BYOK LLM API key as a managed key.',
-            )
-
-        managed_config = await get_effective_managed_llm_key_config(
-            user_id, effective_org_id
+        settings_store = await SaasSettingsStore.get_instance(
+            user_id, effective_org_id=effective_org_id
         )
-        if managed_config is None:
+        rotation = await settings_store.rotate_managed_llm_key()
+
+        if rotation.status == ManagedLlmKeyStatus.NOT_MANAGED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Cannot refresh a non-managed LLM API key as a managed key.',
             )
-
-        existing_key = (
-            org_member.llm_api_key.get_secret_value()
-            if org_member.llm_api_key
-            else None
-        )
-
-        key = await generate_managed_llm_key(
-            user_id, effective_org_id, openhands_type=managed_config.openhands_type
-        )
-        if not key:
+        if rotation.status == ManagedLlmKeyStatus.BYOK:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='Failed to generate new managed LLM API key',
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Cannot refresh a custom BYOK LLM API key as a managed key.',
+            )
+        if rotation.status == ManagedLlmKeyStatus.MISSING_MEMBER:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(f'User {user_id} is not a member of org {effective_org_id}'),
             )
 
-        if not await store_managed_llm_key_in_db(user_id, effective_org_id, key):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='Failed to store new managed LLM API key',
-            )
-
-        if existing_key and existing_key != key:
+        # The replacement is already persisted; clean up the previous token
+        # best-effort. The deterministic alias was already deleted by the
+        # rotation, so failure here only leaves a stale token, not an orphan.
+        if rotation.old_key and rotation.old_key != rotation.new_key:
             try:
-                await LiteLlmManager.delete_key(existing_key)
+                await LiteLlmManager.delete_key(rotation.old_key)
             except Exception as exc:
                 logger.warning(
                     'Failed to delete previous managed LLM key after refresh',
