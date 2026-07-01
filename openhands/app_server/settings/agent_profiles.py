@@ -137,7 +137,6 @@ class AgentProfiles(BaseModel):
         endpoint consume. ``llm_profile_ref`` is ``None`` for ACP profiles."""
         summaries: list[dict[str, Any]] = []
         for pid, profile in self.profiles.items():
-            is_openhands = isinstance(profile, OpenHandsAgentProfile)
             summaries.append(
                 {
                     'id': pid,
@@ -145,7 +144,9 @@ class AgentProfiles(BaseModel):
                     'agent_kind': profile.agent_kind,
                     'revision': profile.revision,
                     'llm_profile_ref': (
-                        profile.llm_profile_ref if is_openhands else None
+                        profile.llm_profile_ref
+                        if isinstance(profile, OpenHandsAgentProfile)
+                        else None
                     ),
                     'mcp_server_refs': profile.mcp_server_refs,
                 }
