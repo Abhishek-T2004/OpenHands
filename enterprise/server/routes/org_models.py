@@ -852,6 +852,7 @@ class OrgUserUsageStats(BaseModel):
     """Detailed usage stats by user for the admin dashboard."""
 
     items: list[OrgUserUsageRow] = Field(default_factory=list)
+    has_more: bool = False
 
 
 class ModelUsageData(BaseModel):
@@ -861,6 +862,15 @@ class ModelUsageData(BaseModel):
     conversation_count: int = 0
     total_tokens: int = 0
     total_cost: float = 0.0
+
+
+class AgentUsageData(BaseModel):
+    """Usage data for a single agent."""
+
+    agent_name: str
+    conversation_count: int = 0
+    total_cost: float = 0.0
+
 
 
 class OrgUsageStats(BaseModel):
@@ -880,3 +890,6 @@ class OrgUsageStats(BaseModel):
 
     # Model breakdown
     model_usage: list[ModelUsageData] = Field(default_factory=list)
+
+    # Agent breakdown
+    agent_usage: list[AgentUsageData] = Field(default_factory=list)
