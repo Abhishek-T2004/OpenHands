@@ -650,7 +650,7 @@ class TestLiveStatusAppConversationService:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        'base_url',
+        'llm_base_url',
         [
             'https://llm-proxy.app.all-hands.dev',
             'https://llm-proxy.staging.all-hands.dev',
@@ -658,7 +658,7 @@ class TestLiveStatusAppConversationService:
         ],
     )
     async def test_maybe_refresh_managed_llm_key_refreshes_stale_key(
-        self, monkeypatch, base_url
+        self, monkeypatch, llm_base_url
     ):
         org_id = uuid4()
         self.service.app_mode = 'saas'
@@ -676,7 +676,7 @@ class TestLiveStatusAppConversationService:
 
         llm = LLM(
             model='openhands/gpt-5.5',
-            base_url=base_url,
+            base_url=llm_base_url,
             api_key=SecretStr('sk-old-managed-key'),
         )
 
