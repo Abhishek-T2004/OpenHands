@@ -91,13 +91,11 @@ class DeviceFlowResult:
     def __post_init__(self) -> None:
         if self.error is None and (not self.api_key or not self.user_id):
             raise ValueError(
-                'DeviceFlowResult requires both api_key and user_id when '
-                'error is None.'
+                'DeviceFlowResult requires both api_key and user_id when error is None.'
             )
         if self.error is not None and (self.api_key or self.user_id):
             raise ValueError(
-                'DeviceFlowResult.api_key and user_id must be empty when '
-                'error is set.'
+                'DeviceFlowResult.api_key and user_id must be empty when error is set.'
             )
 
 
