@@ -279,6 +279,10 @@ async def create_api_key(
             expires_at=key_data.expires_at,
             not_before=key_data.not_before,
             org_id=target_org_id,
+            # We've already decided the binding above (explicit null for
+            # unbound, the supplied UUID, or the effective org when omitted)
+            # so disable the store's current-org fallback.
+            use_current_org_fallback=False,
         )
         # Look up the row we just inserted so the response reflects the
         # persisted ``org_id`` (which may be ``None`` for unbound keys).

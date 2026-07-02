@@ -84,6 +84,8 @@ class ApiKeyStore:
         expires_at: datetime | None = None,
         not_before: datetime | None = None,
         org_id: UUID | None = None,
+        *,
+        use_current_org_fallback: bool = True,
     ) -> str:
         """Create a new API key for a user.
 
@@ -95,18 +97,23 @@ class ApiKeyStore:
             not_before: Optional earliest activation datetime in UTC. The key is
                 rejected at validation time when ``now < not_before``. Timezone
                 info is stripped before writing, mirroring ``expires_at``.
-            org_id: Optional explicit org binding. When ``None``, the key is
-                created *unbound*: at request time the org is resolved from
-                the ``X-Org-Id`` header or, failing that, the caller's
-                ``user.current_org_id`` (see
-                ``SaasUserAuth._resolve_org_id``). Unbound keys can therefore
-                be used against any org the caller is a member of.
+            org_id: Org binding for the new key. ``None`` creates an
+                *unbound* key (resolved per-request via ``X-Org-Id`` or the
+                caller's ``user.current_org_id``). When
+                ``use_current_org_fallback`` is ``True`` (the default,
+                preserved for backwards compatibility with internal callers),
+                a ``None`` ``org_id`` is replaced with the user's
+                ``current_org_id`` instead. Callers that have already decided
+                the binding should pass ``use_current_org_fallback=False``
+                so an explicit ``None`` is stored verbatim.
+            use_current_org_fallback: See ``org_id``. Defaults to ``True``
+                for backward compatibility.
 
         Returns:
             The generated API key
         """
         api_key = self.generate_api_key()
-        if org_id is None:
+        if org_id is None and use_current_org_fallback:
             user = await UserStore.get_user_by_id(user_id)
             if user is None:
                 raise ValueError(f'User not found: {user_id}')

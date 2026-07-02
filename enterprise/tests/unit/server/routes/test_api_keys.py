@@ -666,3 +666,123 @@ class TestApiKeyCreateValidation:
                 expires_at=same,
             )
         assert 'not_before must be earlier than expires_at' in str(exc_info.value)
+
+
+class TestCreateApiKeyRoute:
+    """End-to-end tests for the ``POST /api/keys`` route."""
+
+    @pytest.mark.asyncio
+    async def test_unbound_org_id_creates_unbound_key(self):
+        """Regression: ``org_id=None`` must produce an unbound (org_id NULL) row.
+
+        The route previously delegated to ``ApiKeyStore.create_api_key``
+        with ``org_id=None``; the store then silently rebound to
+        ``user.current_org_id``, so the row inserted never matched the
+        route's ``name + org_id is None`` lookup and the route returned
+        500. The store now accepts ``use_current_org_fallback=False`` and
+        the route passes that flag.
+        """
+        from server.routes.api_keys import ApiKeyCreate, create_api_key
+
+        # A row the route will "find" after insert: an unbound key with
+        # the matching name. This is what the (now fixed) route expects
+        # ``list_api_keys`` to surface.
+        matching_key = MagicMock()
+        matching_key.id = 1
+        matching_key.name = 'AllOrgs'
+        matching_key.org_id = None
+        matching_key.created_at = datetime.now(UTC)
+        matching_key.last_used_at = None
+        matching_key.not_before = None
+        matching_key.expires_at = None
+
+        captured: dict = {}
+
+        async def fake_create_api_key(
+            user_id,
+            name,
+            expires_at=None,
+            not_before=None,
+            org_id=...,
+            **kwargs,
+        ):
+            # The store should be called with the route's explicit
+            # ``None`` and the fallback disabled.
+            captured['org_id'] = org_id
+            captured['use_current_org_fallback'] = kwargs.get(
+                'use_current_org_fallback'
+            )
+            return 'sk-oh-fake'
+
+        with patch(
+            'server.routes.api_keys.api_key_store.create_api_key',
+            AsyncMock(side_effect=fake_create_api_key),
+        ), patch(
+            'server.routes.api_keys.api_key_store.list_api_keys',
+            AsyncMock(return_value=[matching_key]),
+        ):
+            result = await create_api_key(
+                key_data=ApiKeyCreate(name='AllOrgs', org_id=None),
+                user_id=str(uuid.uuid4()),
+                effective_org_id=uuid.uuid4(),
+            )
+
+        assert captured['org_id'] is None
+        assert captured['use_current_org_fallback'] is False
+        assert result.org_id is None
+        assert result.name == 'AllOrgs'
+
+    @pytest.mark.asyncio
+    async def test_omitted_org_id_falls_back_to_effective_org(self):
+        """An *omitted* ``org_id`` binds the new key to the effective org."""
+        from server.routes.api_keys import ApiKeyCreate, create_api_key
+
+        effective_org = uuid.uuid4()
+        bound_key = MagicMock()
+        bound_key.id = 2
+        bound_key.name = 'Bound'
+        bound_key.org_id = effective_org
+        bound_key.created_at = datetime.now(UTC)
+        bound_key.last_used_at = None
+        bound_key.not_before = None
+        bound_key.expires_at = None
+
+        captured: dict = {}
+
+        async def fake_create_api_key(
+            user_id,
+            name,
+            expires_at=None,
+            not_before=None,
+            org_id=...,
+            **kwargs,
+        ):
+            captured['org_id'] = org_id
+            captured['use_current_org_fallback'] = kwargs.get(
+                'use_current_org_fallback'
+            )
+            return 'sk-oh-fake'
+
+        with patch(
+            'server.routes.api_keys.api_key_store.create_api_key',
+            AsyncMock(side_effect=fake_create_api_key),
+        ), patch(
+            'server.routes.api_keys.api_key_store.list_api_keys',
+            AsyncMock(return_value=[bound_key]),
+        ), patch(
+            # Membership check on the effective org -- return a non-None
+            # member so the route passes the check.
+            'server.routes.api_keys.OrgMemberStore.get_org_member',
+            AsyncMock(return_value=MagicMock()),
+        ):
+            result = await create_api_key(
+                key_data=ApiKeyCreate(name='Bound'),  # no org_id
+                user_id=str(uuid.uuid4()),
+                effective_org_id=effective_org,
+            )
+
+        # Route forwards the effective org to the store, and disables the
+        # fallback so the store doesn't double-rebind.
+        assert captured['org_id'] == effective_org
+        assert captured['use_current_org_fallback'] is False
+        assert result.org_id == effective_org
