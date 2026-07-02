@@ -139,7 +139,11 @@ class SaasSettingsStore(SettingsStore):
 
     @staticmethod
     def _get_persisted_agent_settings(item: Settings) -> dict[str, Any]:
-        return item.agent_settings.model_dump(mode='json')
+        return item.agent_settings.model_dump(
+            mode='json',
+            context={'expose_secrets': True},
+            exclude={'llm': {'api_key'}},
+        )
 
     async def load(self) -> Settings | None:
         user = await UserStore.get_user_by_id(self.user_id)

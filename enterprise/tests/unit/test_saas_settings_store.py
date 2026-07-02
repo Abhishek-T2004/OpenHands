@@ -108,6 +108,39 @@ def test_member_settings_persist_full_effective_agent_settings():
     assert settings.conversation_settings.security_analyzer == 'llm'
 
 
+def test_persisted_agent_settings_preserves_private_mcp_auth_headers():
+    settings = Settings()
+    settings.update(
+        {
+            'agent_settings_diff': {
+                'llm': {
+                    'model': 'anthropic/claude-sonnet-4-5-20250929',
+                    'base_url': 'https://api.example.com',
+                    'api_key': 'llm-secret-key',
+                },
+                'mcp_config': {
+                    'mcpServers': {
+                        'integrations-hub': {
+                            'url': 'https://integrations.example.com/api/mcp',
+                            'headers': {'Authorization': 'Bearer ih-secret-key'},
+                        },
+                    },
+                },
+            },
+        }
+    )
+
+    persisted = SaasSettingsStore._get_persisted_agent_settings(settings)
+
+    assert (
+        persisted['mcp_config']['mcpServers']['integrations-hub']['headers'][
+            'Authorization'
+        ]
+        == 'Bearer ih-secret-key'
+    )
+    assert 'api_key' not in persisted['llm']
+
+
 @pytest.fixture
 def settings_store(async_session_maker):
     store = SaasSettingsStore('5594c7b6-f959-4b81-92e9-b09c206f5081')
