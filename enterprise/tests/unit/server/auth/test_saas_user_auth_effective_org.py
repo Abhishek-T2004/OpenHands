@@ -582,3 +582,110 @@ class TestGetTargetOrgIdForPermissionCheck:
             with pytest.raises(HTTPException) as exc_info:
                 await user_auth.get_target_org_id_for_permission_check()
         assert exc_info.value.status_code == 403
+
+
+class TestAuthOrgResolutionMatrix:
+    """Self-documenting coverage of the 2x2 (api_key_org_id, X-Org-Id) matrix.
+
+    The resolver's precedence is:
+
+    1. ``api_key_org_id`` (org-bound key) -- pin, X-Org-Id must match.
+    2. ``X-Org-Id`` header (unbound key) -- resolve against memberships.
+    3. ``user.current_org_id`` -- fallback when neither is set.
+
+    Each test below pins one cell of the 2x2 with a name that mirrors
+    the user-facing description, so the coverage is obvious from the
+    test list alone.
+    """
+
+    @pytest.mark.asyncio
+    async def test_unbound_key_no_header_uses_user_current_org(
+        self, async_session_maker, user_id, org_id
+    ):
+        """Case 1: token has no org id, no X-Org-Id header -> user.current_org_id."""
+        await _seed_minimal(async_session_maker, user_id, org_id)
+        user_auth = SaasUserAuth(
+            user_id=user_id,
+            refresh_token=SecretStr('mock'),
+            # api_key_org_id omitted (unbound key).
+            # _x_org_id_header omitted (no header).
+        )
+        with _stores_patched(async_session_maker)[0]:
+            effective = await user_auth.get_effective_org_id()
+        assert effective == org_id
+
+    @pytest.mark.asyncio
+    async def test_unbound_key_with_header_uses_header_org(
+        self, async_session_maker, user_id, org_id, other_org_id
+    ):
+        """Case 2: token has no org id, X-Org-Id header -> header value.
+
+        The user must be a member of the requested org; both
+        ``org_id`` and ``other_org_id`` are seeded as memberships and
+        the header points at ``other_org_id``.
+        """
+        await _seed_minimal(async_session_maker, user_id, org_id, other_org_id)
+        user_auth = SaasUserAuth(
+            user_id=user_id,
+            refresh_token=SecretStr('mock'),
+            _x_org_id_header=str(other_org_id),
+        )
+        with _stores_patched(async_session_maker)[2]:
+            effective = await user_auth.get_effective_org_id()
+        assert effective == other_org_id
+
+    @pytest.mark.asyncio
+    async def test_bound_key_no_header_uses_bound_org(
+        self, async_session_maker, user_id, org_id, other_org_id
+    ):
+        """Case 3: token has org id, no X-Org-Id header -> bound org.
+
+        The user's persisted current_org_id is ``org_id`` but the API
+        key is pinned to ``other_org_id``; the bound org wins.
+        """
+        await _seed_minimal(async_session_maker, user_id, org_id)
+        user_auth = SaasUserAuth(
+            user_id=user_id,
+            refresh_token=SecretStr('mock'),
+            api_key_org_id=other_org_id,
+        )
+        effective = await user_auth.get_effective_org_id()
+        assert effective == other_org_id
+
+    @pytest.mark.asyncio
+    async def test_bound_key_with_matching_header_uses_bound_org(
+        self, async_session_maker, user_id, org_id
+    ):
+        """Case 4: token has org id, X-Org-Id header matches -> bound org.
+
+        A header that agrees with the bound org is accepted; the
+        effective org remains the bound value.
+        """
+        user_auth = SaasUserAuth(
+            user_id=user_id,
+            refresh_token=SecretStr('mock'),
+            api_key_org_id=org_id,
+            _x_org_id_header=str(org_id),
+        )
+        effective = await user_auth.get_effective_org_id()
+        assert effective == org_id
+
+    @pytest.mark.asyncio
+    async def test_bound_key_with_conflicting_header_raises_403(
+        self, async_session_maker, user_id, org_id, other_org_id
+    ):
+        """Case 4b: token has org id, X-Org-Id header conflicts -> 403.
+
+        The bound org is the source of truth; a conflicting header
+        cannot redirect the request.
+        """
+        user_auth = SaasUserAuth(
+            user_id=user_id,
+            refresh_token=SecretStr('mock'),
+            api_key_org_id=org_id,
+            _x_org_id_header=str(other_org_id),
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await user_auth.get_effective_org_id()
+        assert exc_info.value.status_code == 403
+
