@@ -19,7 +19,10 @@ class ApiKeyValidationResult:
     """Result of API key validation containing user and organization info."""
 
     user_id: str
-    org_id: UUID | None  # None for legacy API keys without org binding
+    # None when the key is unbound (scoped to the caller via X-Org-Id at
+    # request time, or defaulting to user.current_org_id when no header is
+    # supplied). See ``SaasUserAuth._resolve_org_id`` for the full precedence.
+    org_id: UUID | None
     key_id: int
     key_name: str | None
 
@@ -92,10 +95,12 @@ class ApiKeyStore:
             not_before: Optional earliest activation datetime in UTC. The key is
                 rejected at validation time when ``now < not_before``. Timezone
                 info is stripped before writing, mirroring ``expires_at``.
-            org_id: Optional explicit org binding. When omitted, falls back
-                to the user's persisted ``current_org_id``. Callers in
-                request context should pass the effective org id (see
-                ``SaasUserAuth.get_effective_org_id``).
+            org_id: Optional explicit org binding. When ``None``, the key is
+                created *unbound*: at request time the org is resolved from
+                the ``X-Org-Id`` header or, failing that, the caller's
+                ``user.current_org_id`` (see
+                ``SaasUserAuth._resolve_org_id``). Unbound keys can therefore
+                be used against any org the caller is a member of.
 
         Returns:
             The generated API key
@@ -240,7 +245,9 @@ class ApiKeyStore:
 
         Returns:
             ApiKeyValidationResult if the key is valid, None otherwise.
-            The org_id may be None for legacy API keys that weren't bound to an organization.
+            The ``org_id`` is ``None`` for *unbound* keys (see
+            ``create_api_key``); such keys are scoped per-request via the
+            ``X-Org-Id`` header or the caller's current org id.
         """
         now = datetime.now(UTC)
 
@@ -328,17 +335,18 @@ class ApiKeyStore:
     async def list_api_keys(
         self, user_id: str, org_id: UUID | None = None
     ) -> list[ApiKey]:
-        """List all user-visible API keys for a user in the given org.
+        """List user-visible API keys for a user.
+
+        Returns keys that are either bound to ``org_id`` **or** unbound
+        (``org_id IS NULL`` -- visible from any org context). Internal keys
+        (system keys and ``MCP_API_KEY``) are excluded.
 
         Args:
             user_id: User to list keys for.
             org_id: Explicit org to scope to. When omitted, falls back to
-                the user's persisted ``current_org_id`` (legacy behavior).
-                Request-context callers should pass the effective org id.
-
-        This excludes:
-        - System keys (name starts with __SYSTEM__:) - created by internal services
-        - MCP_API_KEY - internal MCP key
+                the user's persisted ``current_org_id``. Request-context
+                callers should pass the effective org id so the user's
+                current selection is honored.
         """
         if org_id is None:
             user = await UserStore.get_user_by_id(user_id)
@@ -350,7 +358,9 @@ class ApiKeyStore:
             result = await session.execute(
                 select(ApiKey).filter(
                     ApiKey.user_id == user_id,
-                    ApiKey.org_id == org_id,
+                    # Bound to the requested org OR unbound (visible
+                    # regardless of which org the user is currently in).
+                    (ApiKey.org_id == org_id) | (ApiKey.org_id.is_(None)),
                 )
             )
             keys = result.scalars().all()

@@ -485,7 +485,7 @@ class TestGetCurrentApiKey:
     @pytest.mark.asyncio
     @patch('server.routes.api_keys.get_user_auth')
     async def test_returns_api_key_info_for_bearer_auth(self, mock_get_user_auth):
-        """Test that API key metadata including org_id is returned for bearer token auth."""
+        """Org-bound API key reports its bound org in both fields."""
         # Arrange
         user_id = 'user-123'
         org_id = uuid.uuid4()
@@ -499,6 +499,8 @@ class TestGetCurrentApiKey:
             api_key_id=42,
             api_key_name='My Production Key',
         )
+        # Bound keys resolve to their bound org in all contexts.
+        user_auth.get_effective_org_id = AsyncMock(return_value=org_id)
         mock_get_user_auth.return_value = user_auth
 
         # Act
@@ -507,6 +509,7 @@ class TestGetCurrentApiKey:
         # Assert
         assert isinstance(result, CurrentApiKeyResponse)
         assert result.org_id == str(org_id)
+        assert result.bound_org_id == str(org_id)
         assert result.id == 42
         assert result.name == 'My Production Key'
         assert result.user_id == user_id
@@ -533,40 +536,67 @@ class TestGetCurrentApiKey:
 
     @pytest.mark.asyncio
     @patch('server.routes.api_keys.get_user_auth')
-    async def test_returns_400_when_api_key_org_id_is_none(self, mock_get_user_auth):
-        """Test that 400 is returned when API key has no org_id (legacy key)."""
+    async def test_unbound_key_reports_effective_org(self, mock_get_user_auth):
+        """An unbound API key reports the resolved effective org and None bound."""
         # Arrange
         user_id = 'user-123'
+        effective_org = uuid.uuid4()
         mock_request = MagicMock()
 
         user_auth = SaasUserAuth(
             refresh_token=SecretStr('mock-token'),
             user_id=user_id,
             auth_type=AuthType.BEARER,
-            api_key_org_id=None,  # No org_id - legacy key
+            api_key_org_id=None,  # Unbound key
             api_key_id=42,
-            api_key_name='Legacy Key',
+            api_key_name='Multi-org Key',
         )
+        # Unbound keys resolve to the request's effective org (X-Org-Id or
+        # user.current_org_id).
+        user_auth.get_effective_org_id = AsyncMock(return_value=effective_org)
         mock_get_user_auth.return_value = user_auth
 
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            await get_current_api_key(request=mock_request, user_id=user_id)
+        # Act
+        result = await get_current_api_key(request=mock_request, user_id=user_id)
 
-        assert exc_info.value.status_code == 400
-        assert 'created before organization support' in exc_info.value.detail
+        # Assert
+        assert isinstance(result, CurrentApiKeyResponse)
+        assert result.org_id == str(effective_org)
+        assert result.bound_org_id is None
+        assert result.id == 42
+        assert result.name == 'Multi-org Key'
 
 
 class TestApiKeyCreateValidation:
-    """Test the ApiKeyCreate Pydantic model's active-window validators."""
+    """Test the ApiKeyCreate Pydantic model's validators."""
 
     def test_accepts_no_window(self):
-        """A request with neither bound set is valid (legacy behaviour)."""
+        """A request with neither bound set is valid."""
         from server.routes.api_keys import ApiKeyCreate
 
-        model = ApiKeyCreate(name='legacy-style')
+        model = ApiKeyCreate(name='unbound-style')
         assert model.not_before is None
         assert model.expires_at is None
+        assert model.org_id is None
+
+    def test_accepts_explicit_unbound_org_id(self):
+        """An explicit ``org_id=None`` is preserved as a model-field-set signal."""
+        from server.routes.api_keys import ApiKeyCreate
+
+        model = ApiKeyCreate(name='unbound-style', org_id=None)
+        assert model.org_id is None
+        # ``org_id`` is in ``model_fields_set`` even when set to ``None``;
+        # the route uses this to distinguish "explicit unbound" from
+        # "field omitted -> fall back to effective org".
+        assert 'org_id' in model.model_fields_set
+
+    def test_accepts_specific_org_id(self):
+        """An explicit ``org_id=<UUID>`` binds the new key to that org."""
+        from server.routes.api_keys import ApiKeyCreate
+
+        bound_org = uuid.uuid4()
+        model = ApiKeyCreate(name='bound-style', org_id=bound_org)
+        assert model.org_id == bound_org
 
     def test_accepts_not_before_only(self):
         """A request with only not_before is valid."""

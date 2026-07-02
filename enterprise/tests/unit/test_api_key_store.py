@@ -257,20 +257,25 @@ async def test_validate_api_key_valid_timezone_naive(
 
 
 @pytest.mark.asyncio
-async def test_validate_api_key_legacy_without_org_id(
+async def test_validate_api_key_unbound_returns_none_org_id(
     api_key_store, async_session_maker
 ):
-    """Test validating a legacy API key without org_id returns None for org_id."""
+    """An unbound API key validates successfully and reports ``org_id=None``.
+
+    The effective org for an unbound key is resolved per-request by
+    ``SaasUserAuth`` (from ``X-Org-Id`` or ``user.current_org_id``); the
+    store layer only reflects the persisted binding.
+    """
     # Arrange
     user_id = str(uuid.uuid4())
-    api_key_value = 'test-legacy-key-no-org'
+    api_key_value = 'test-unbound-key-no-org'
 
     async with async_session_maker() as session:
         key_record = ApiKey(
             key=api_key_value,
             user_id=user_id,
-            org_id=None,  # Legacy key without org binding
-            name='Legacy Key',
+            org_id=None,  # Unbound key
+            name='Multi-org Key',
         )
         session.add(key_record)
         await session.commit()

@@ -199,6 +199,29 @@ interface ApiKeysTableProps {
   onDeleteKey: (key: ApiKey) => void;
 }
 
+function ApiKeyScopeBadge({ orgId }: { orgId: string | null }) {
+  const { t } = useTranslation();
+  if (orgId === null) {
+    // Unbound key -- usable against any org via X-Org-Id.
+    return (
+      <span
+        className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-300"
+        title={t(I18nKey.SETTINGS$API_KEY_ORG_ALL_ORGS_DESCRIPTION)}
+      >
+        {t(I18nKey.SETTINGS$API_KEY_SCOPE_ALL_ORGS)}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-tertiary text-gray-300"
+      title={t(I18nKey.SETTINGS$API_KEY_SCOPE_BOUND)}
+    >
+      {t(I18nKey.SETTINGS$API_KEY_SCOPE_BOUND)}
+    </span>
+  );
+}
+
 function ApiKeysTable({ apiKeys, isLoading, onDeleteKey }: ApiKeysTableProps) {
   const { t } = useTranslation();
 
@@ -235,6 +258,9 @@ function ApiKeysTable({ apiKeys, isLoading, onDeleteKey }: ApiKeysTableProps) {
             </th>
             <th className="text-left p-3 text-sm font-medium">
               {t(I18nKey.SETTINGS$API_KEY_STATUS)}
+            </th>
+            <th className="text-left p-3 text-sm font-medium">
+              {t(I18nKey.SETTINGS$API_KEY_SCOPE)}
             </th>
             <th className="text-right p-3 text-sm font-medium">
               {t(I18nKey.SETTINGS$ACTIONS)}
@@ -278,6 +304,9 @@ function ApiKeysTable({ apiKeys, isLoading, onDeleteKey }: ApiKeysTableProps) {
                       </span>
                     )}
                   </div>
+                </td>
+                <td className="p-3 text-sm">
+                  <ApiKeyScopeBadge orgId={key.org_id} />
                 </td>
                 <td className="p-3 text-right">
                   <button

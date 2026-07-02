@@ -13,6 +13,7 @@ const mockApiKeys: ApiKey[] = vi.hoisted(() => [
     last_used_at: "2026-05-15T10:00:00Z",
     not_before: null,
     expires_at: null,
+    org_id: null,
   },
   {
     id: "2",
@@ -22,6 +23,7 @@ const mockApiKeys: ApiKey[] = vi.hoisted(() => [
     last_used_at: null,
     not_before: "2099-01-01T00:00:00Z",
     expires_at: "2099-12-31T00:00:00Z",
+    org_id: null,
   },
   {
     id: "3",
@@ -31,6 +33,7 @@ const mockApiKeys: ApiKey[] = vi.hoisted(() => [
     last_used_at: "2025-12-01T10:00:00Z",
     not_before: null,
     expires_at: "2025-12-31T00:00:00Z",
+    org_id: "org-1",
   },
 ]);
 
@@ -101,5 +104,36 @@ describe("ApiKeysManager - status column", () => {
     expect(row).not.toBeNull();
     expect(row!.textContent).toContain("SETTINGS$API_KEY_NOT_BEFORE");
     expect(row!.textContent).toContain("SETTINGS$API_KEY_EXPIRES_AT");
+  });
+});
+
+describe("ApiKeysManager - scope column", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders a Scope column header", () => {
+    renderManager();
+    expect(
+      screen.getByRole("columnheader", { name: "SETTINGS$API_KEY_SCOPE" }),
+    ).toBeInTheDocument();
+  });
+
+  it("labels unbound keys (org_id=null) with the 'All orgs' badge", () => {
+    renderManager();
+    const row = screen.getByText("Active Key").closest("tr");
+    expect(row).not.toBeNull();
+    expect(row!.textContent).toContain("SETTINGS$API_KEY_SCOPE_ALL_ORGS");
+    // Unbound badges use the blue accent color.
+    expect(row!.querySelector('[class*="bg-blue"]')).toBeInTheDocument();
+  });
+
+  it("labels bound keys (org_id=<UUID>) with the 'Bound to current org' badge", () => {
+    renderManager();
+    const row = screen.getByText("Expired Key").closest("tr");
+    expect(row).not.toBeNull();
+    expect(row!.textContent).toContain("SETTINGS$API_KEY_SCOPE_BOUND");
+    // Bound badges do not use the blue accent color.
+    expect(row!.querySelector('[class*="bg-blue"]')).toBeNull();
   });
 });
