@@ -7,7 +7,9 @@ import pytest
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from server.routes.oauth_device import (
+    API_KEY_COOKIE_NAME,
     device_authorization,
+    device_cookie,
     device_token,
     device_verification_authenticated,
 )
@@ -169,6 +171,246 @@ class TestDeviceToken:
         mock_api_key_store.retrieve_api_key_by_name.assert_called_once_with(
             'user-123', 'Device Link Access Key (ABC12345)'
         )
+
+
+class TestDeviceCookie:
+    """Test the /cookie endpoint that delivers the API key as an HttpOnly cookie."""
+
+    @pytest.mark.asyncio
+    @patch('server.routes.oauth_device.get_cookie_domain', return_value='example.com')
+    @patch('server.routes.oauth_device.get_cookie_samesite', return_value='strict')
+    @patch('server.routes.oauth_device.ApiKeyStore')
+    @patch('server.routes.oauth_device.device_code_store')
+    async def test_device_cookie_success(
+        self,
+        mock_store,
+        mock_api_key_class,
+        mock_samesite,
+        mock_domain,
+    ):
+        """A successful poll must set the api_key cookie and must NOT return the key in the body."""
+        device_code = 'test-device-code'
+
+        mock_device = MagicMock()
+        mock_device.is_expired.return_value = False
+        mock_device.status = 'authorized'
+        mock_device.keycloak_user_id = 'user-123'
+        mock_device.user_code = 'ABC12345'
+        mock_device.check_rate_limit.return_value = (False, 5)
+        mock_store.get_by_device_code = AsyncMock(return_value=mock_device)
+        mock_store.update_poll_time = AsyncMock(return_value=True)
+
+        mock_api_key_store = MagicMock()
+        mock_api_key_store.retrieve_api_key_by_name = AsyncMock(
+            return_value='secret-api-key-value'
+        )
+        mock_api_key_class.get_instance.return_value = mock_api_key_store
+
+        # Mock request with a non-localhost host so we exercise the Secure flag.
+        request = MagicMock(spec=Request)
+        request.url.hostname = 'app.example.com'
+
+        response = await device_cookie(
+            device_code=device_code, http_request=request
+        )
+
+        # The response must be a JSONResponse (so we can attach a cookie) and
+        # must NOT leak the API key in the body.
+        assert isinstance(response, JSONResponse)
+        assert response.status_code == 200
+        body = response.body.decode()
+        assert 'secret-api-key-value' not in body
+        assert 'access_token' not in body
+        # Sanity check on the success marker payload.
+        assert '"success"' in body
+        assert '"user_id":"user-123"' in body
+
+        # The api_key cookie must be set with the correct attributes.
+        assert len(response.raw_headers) >= 1 or len(response.headers.raw) >= 1
+        # Starlette puts cookies on response.headers as a MutableHeaders.
+        set_cookie_headers = [
+            v
+            for k, v in response.headers.raw
+            if k.lower() == b'set-cookie'
+        ]
+        assert len(set_cookie_headers) == 1
+        cookie_header = set_cookie_headers[0].decode()
+        assert f'{API_KEY_COOKIE_NAME}=secret-api-key-value' in cookie_header
+        assert 'HttpOnly' in cookie_header
+        assert 'Secure' in cookie_header
+        assert 'SameSite=strict' in cookie_header
+        assert 'Domain=example.com' in cookie_header
+
+        # Verify the helper reused the same device-specific API key name.
+        mock_api_key_store.retrieve_api_key_by_name.assert_called_once_with(
+            'user-123', 'Device Link Access Key (ABC12345)'
+        )
+
+    @pytest.mark.asyncio
+    @patch('server.routes.oauth_device.get_cookie_domain', return_value=None)
+    @patch('server.routes.oauth_device.get_cookie_samesite', return_value='lax')
+    @patch('server.routes.oauth_device.ApiKeyStore')
+    @patch('server.routes.oauth_device.device_code_store')
+    async def test_device_cookie_localhost_omits_secure(
+        self, mock_store, mock_api_key_class, mock_samesite, mock_domain
+    ):
+        """On localhost (typical dev) we must drop the Secure flag so the cookie is actually sent."""
+        mock_device = MagicMock()
+        mock_device.is_expired.return_value = False
+        mock_device.status = 'authorized'
+        mock_device.keycloak_user_id = 'user-123'
+        mock_device.user_code = 'ABC12345'
+        mock_device.check_rate_limit.return_value = (False, 5)
+        mock_store.get_by_device_code = AsyncMock(return_value=mock_device)
+        mock_store.update_poll_time = AsyncMock(return_value=True)
+
+        mock_api_key_store = MagicMock()
+        mock_api_key_store.retrieve_api_key_by_name = AsyncMock(
+            return_value='k'
+        )
+        mock_api_key_class.get_instance.return_value = mock_api_key_store
+
+        request = MagicMock(spec=Request)
+        request.url.hostname = 'localhost'
+
+        response = await device_cookie(
+            device_code='test-device-code', http_request=request
+        )
+
+        set_cookie_headers = [
+            v
+            for k, v in response.headers.raw
+            if k.lower() == b'set-cookie'
+        ]
+        assert len(set_cookie_headers) == 1
+        cookie_header = set_cookie_headers[0].decode()
+        assert 'Secure' not in cookie_header
+        assert 'HttpOnly' in cookie_header
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'device_exists,status,expected_error',
+        [
+            (False, None, 'invalid_grant'),
+            (True, 'expired', 'expired_token'),
+            (True, 'denied', 'access_denied'),
+            (True, 'pending', 'authorization_pending'),
+        ],
+    )
+    @patch('server.routes.oauth_device.ApiKeyStore')
+    @patch('server.routes.oauth_device.device_code_store')
+    async def test_device_cookie_error_cases(
+        self, mock_store, mock_api_key_class, device_exists, status, expected_error
+    ):
+        """The /cookie endpoint must mirror /token's error responses 1:1."""
+        device_code = 'test-device-code'
+
+        if device_exists:
+            mock_device = MagicMock()
+            mock_device.is_expired.return_value = status == 'expired'
+            mock_device.status = status
+            mock_device.check_rate_limit.return_value = (False, 5)
+            mock_store.get_by_device_code = AsyncMock(return_value=mock_device)
+            mock_store.update_poll_time = AsyncMock(return_value=True)
+        else:
+            mock_store.get_by_device_code = AsyncMock(return_value=None)
+
+        request = MagicMock(spec=Request)
+        request.url.hostname = 'app.example.com'
+
+        result = await device_cookie(
+            device_code=device_code, http_request=request
+        )
+
+        assert isinstance(result, JSONResponse)
+        assert result.status_code == 400
+        content = result.body.decode()
+        assert expected_error in content
+
+        # The api_key cookie must NOT be set on error paths.
+        set_cookie_headers = [
+            v
+            for k, v in result.headers.raw
+            if k.lower() == b'set-cookie'
+        ]
+        for header in set_cookie_headers:
+            decoded = header.decode()
+            assert not decoded.startswith(f'{API_KEY_COOKIE_NAME}=')
+
+    @pytest.mark.asyncio
+    @patch('server.routes.oauth_device.ApiKeyStore')
+    @patch('server.routes.oauth_device.device_code_store')
+    async def test_device_cookie_slow_down(
+        self, mock_store, mock_api_key_class
+    ):
+        """Polling too fast must produce a slow_down error and not set the cookie."""
+        last_poll = datetime.now(UTC) - timedelta(seconds=2)
+        mock_device = DeviceCode(
+            device_code='test_device_code',
+            user_code='ABC123',
+            status='pending',
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            last_poll_time=last_poll,
+            current_interval=5,
+        )
+        mock_store.get_by_device_code = AsyncMock(return_value=mock_device)
+        mock_store.update_poll_time = AsyncMock(return_value=True)
+
+        request = MagicMock(spec=Request)
+        request.url.hostname = 'app.example.com'
+
+        result = await device_cookie(
+            device_code='test_device_code', http_request=request
+        )
+
+        assert isinstance(result, JSONResponse)
+        assert result.status_code == 400
+        content = result.body.decode()
+        assert 'slow_down' in content
+        mock_store.update_poll_time.assert_called_with(
+            'test_device_code', increase_interval=True
+        )
+
+        set_cookie_headers = [
+            v
+            for k, v in result.headers.raw
+            if k.lower() == b'set-cookie'
+        ]
+        for header in set_cookie_headers:
+            decoded = header.decode()
+            assert not decoded.startswith(f'{API_KEY_COOKIE_NAME}=')
+
+    @pytest.mark.asyncio
+    @patch('server.routes.oauth_device.ApiKeyStore')
+    @patch('server.routes.oauth_device.device_code_store')
+    async def test_device_cookie_no_api_key_returns_server_error(
+        self, mock_store, mock_api_key_class
+    ):
+        """An authorized device with a missing API key must return a server_error, not a cookie."""
+        mock_device = MagicMock()
+        mock_device.is_expired.return_value = False
+        mock_device.status = 'authorized'
+        mock_device.keycloak_user_id = 'user-123'
+        mock_device.user_code = 'ABC12345'
+        mock_device.check_rate_limit.return_value = (False, 5)
+        mock_store.get_by_device_code = AsyncMock(return_value=mock_device)
+        mock_store.update_poll_time = AsyncMock(return_value=True)
+
+        mock_api_key_store = MagicMock()
+        mock_api_key_store.retrieve_api_key_by_name = AsyncMock(return_value=None)
+        mock_api_key_class.get_instance.return_value = mock_api_key_store
+
+        request = MagicMock(spec=Request)
+        request.url.hostname = 'app.example.com'
+
+        result = await device_cookie(
+            device_code='test-device-code', http_request=request
+        )
+
+        assert isinstance(result, JSONResponse)
+        assert result.status_code == 500
+        content = result.body.decode()
+        assert 'server_error' in content
 
 
 class TestDeviceVerificationAuthenticated:
