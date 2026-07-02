@@ -204,7 +204,7 @@ export function LoginContent({
         </div>
 
         <h1 className="text-[39px] leading-5 font-medium text-white text-center">
-          {t(I18nKey.AUTH$LETS_GET_STARTED)}
+          TESTING
         </h1>
 
         {shouldShownHelperText && (
