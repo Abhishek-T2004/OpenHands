@@ -126,9 +126,7 @@ async def _resolve_device_api_key(
     # Check rate limiting (RFC 8628 section 3.5)
     is_too_fast, current_interval = device_code_entry.check_rate_limit()
     if is_too_fast:
-        await device_code_store.update_poll_time(
-            device_code, increase_interval=True
-        )
+        await device_code_store.update_poll_time(device_code, increase_interval=True)
         logger.warning(
             'Client polling too fast, returning slow_down error',
             extra={

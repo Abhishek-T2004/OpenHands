@@ -210,9 +210,7 @@ class TestDeviceCookie:
         request = MagicMock(spec=Request)
         request.url.hostname = 'app.example.com'
 
-        response = await device_cookie(
-            device_code=device_code, http_request=request
-        )
+        response = await device_cookie(device_code=device_code, http_request=request)
 
         # The response must be a JSONResponse (so we can attach a cookie) and
         # must NOT leak the API key in the body.
@@ -229,9 +227,7 @@ class TestDeviceCookie:
         assert len(response.raw_headers) >= 1 or len(response.headers.raw) >= 1
         # Starlette puts cookies on response.headers as a MutableHeaders.
         set_cookie_headers = [
-            v
-            for k, v in response.headers.raw
-            if k.lower() == b'set-cookie'
+            v for k, v in response.headers.raw if k.lower() == b'set-cookie'
         ]
         assert len(set_cookie_headers) == 1
         cookie_header = set_cookie_headers[0].decode()
@@ -265,9 +261,7 @@ class TestDeviceCookie:
         mock_store.update_poll_time = AsyncMock(return_value=True)
 
         mock_api_key_store = MagicMock()
-        mock_api_key_store.retrieve_api_key_by_name = AsyncMock(
-            return_value='k'
-        )
+        mock_api_key_store.retrieve_api_key_by_name = AsyncMock(return_value='k')
         mock_api_key_class.get_instance.return_value = mock_api_key_store
 
         request = MagicMock(spec=Request)
@@ -278,9 +272,7 @@ class TestDeviceCookie:
         )
 
         set_cookie_headers = [
-            v
-            for k, v in response.headers.raw
-            if k.lower() == b'set-cookie'
+            v for k, v in response.headers.raw if k.lower() == b'set-cookie'
         ]
         assert len(set_cookie_headers) == 1
         cookie_header = set_cookie_headers[0].decode()
@@ -318,9 +310,7 @@ class TestDeviceCookie:
         request = MagicMock(spec=Request)
         request.url.hostname = 'app.example.com'
 
-        result = await device_cookie(
-            device_code=device_code, http_request=request
-        )
+        result = await device_cookie(device_code=device_code, http_request=request)
 
         assert isinstance(result, JSONResponse)
         assert result.status_code == 400
@@ -329,9 +319,7 @@ class TestDeviceCookie:
 
         # The api_key cookie must NOT be set on error paths.
         set_cookie_headers = [
-            v
-            for k, v in result.headers.raw
-            if k.lower() == b'set-cookie'
+            v for k, v in result.headers.raw if k.lower() == b'set-cookie'
         ]
         for header in set_cookie_headers:
             decoded = header.decode()
@@ -340,9 +328,7 @@ class TestDeviceCookie:
     @pytest.mark.asyncio
     @patch('server.routes.oauth_device.ApiKeyStore')
     @patch('server.routes.oauth_device.device_code_store')
-    async def test_device_cookie_slow_down(
-        self, mock_store, mock_api_key_class
-    ):
+    async def test_device_cookie_slow_down(self, mock_store, mock_api_key_class):
         """Polling too fast must produce a slow_down error and not set the cookie."""
         last_poll = datetime.now(UTC) - timedelta(seconds=2)
         mock_device = DeviceCode(
@@ -372,9 +358,7 @@ class TestDeviceCookie:
         )
 
         set_cookie_headers = [
-            v
-            for k, v in result.headers.raw
-            if k.lower() == b'set-cookie'
+            v for k, v in result.headers.raw if k.lower() == b'set-cookie'
         ]
         for header in set_cookie_headers:
             decoded = header.decode()
