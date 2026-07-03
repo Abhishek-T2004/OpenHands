@@ -19,8 +19,8 @@ NULL`` (treated as an empty collection) and ``active_agent_profile_id = NULL``
 is seeded lazily on first access to ``/api/agent-profiles``, so no downtime or
 follow-up script is required.
 
-Revision ID: 129
-Revises: 128
+Revision ID: 131
+Revises: 130
 Create Date: 2026-06-30 00:00:00.000000
 """
 
@@ -29,8 +29,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '129'
-down_revision: Union[str, None] = '128'
+revision: str = '131'
+down_revision: Union[str, None] = '130'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
