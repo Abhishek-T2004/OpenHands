@@ -130,9 +130,15 @@ async def test_create_user_with_llm_profiles_does_not_crash_and_preserves_secret
 
     assert user.llm_profiles is not None
     assert user.llm_profiles['active'] == 'work'
-    # SecretStr would serialize as '**********' without
-    # context={'expose_secrets': True}; assert the real value survived.
-    assert user.llm_profiles['profiles']['work']['api_key'] == 'work-secret-key'
+    assert user.llm_profiles['profiles']['work']['api_key'] != 'work-secret-key'
+
+    from openhands.app_server.settings.llm_profiles import LLMProfiles
+    from storage.encrypt_utils import get_settings_cipher_context
+
+    profiles = LLMProfiles.model_validate(
+        user.llm_profiles, context=get_settings_cipher_context()
+    )
+    assert profiles.require('work').api_key.get_secret_value() == 'work-secret-key'
 
 
 # --- Tests for first-user → superadmin designation ---

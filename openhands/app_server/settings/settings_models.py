@@ -24,6 +24,7 @@ from pydantic import (
     SecretStr,
     SerializationInfo,
     ValidationError,
+    ValidationInfo,
     field_serializer,
     field_validator,
     model_validator,
@@ -274,15 +275,18 @@ def _coerce_dict_secrets(d: dict[str, Any]) -> dict[str, Any]:
 
 def _load_persisted_agent_settings(
     data: Any,
+    *,
+    context: dict[str, Any] | None = None,
 ) -> OpenHandsAgentSettings | ACPAgentSettings:
     """Load persisted agent settings via the SDK loader.
 
     Routes the raw payload through :func:`validate_agent_settings`, which
     applies registered schema migrations, canonicalizes the legacy
     ``agent_kind: 'llm'`` tag to ``'openhands'``, and validates against the
-    discriminated :data:`AgentSettingsConfig` union.
+    discriminated :data:`AgentSettingsConfig` union. ``context`` is forwarded
+    to SDK validators so encrypted secret fields can be decrypted on load.
     """
-    return validate_agent_settings(data or {})
+    return validate_agent_settings(data or {}, context=context)
 
 
 def _load_persisted_conversation_settings(data: Any) -> ConversationSettings:
@@ -404,14 +408,6 @@ class Settings(BaseModel):
     # (``marketplace_composition``). It is intentionally NOT a model validator:
     # validating on construction would run on every ``load()`` and could lock a
     # user out of settings entirely if legacy stored data contained a duplicate.
-
-    def __init__(self, **data: Any):
-        # Import Secrets here to avoid circular imports
-        from openhands.app_server.secrets.secrets_models import Secrets
-
-        if 'secrets_store' not in data or data['secrets_store'] is None:
-            data['secrets_store'] = Secrets()
-        super().__init__(**data)
 
     @property
     def llm_api_key_is_set(self) -> bool:
@@ -568,9 +564,7 @@ class Settings(BaseModel):
     ) -> dict[str, Any]:
         context = info.context or {}
         if context.get('expose_secrets', False):
-            return agent_settings.model_dump(
-                mode='json', context={'expose_secrets': True}
-            )
+            return agent_settings.model_dump(mode='json', context=context)
         return agent_settings.model_dump(mode='json')
 
     # ── Profile management ─────────────────────────────────────────
@@ -612,7 +606,9 @@ class Settings(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def _normalize_inputs(cls, data: dict | object) -> dict | object:
+    def _normalize_inputs(
+        cls, data: dict | object, info: ValidationInfo
+    ) -> dict | object:
         """Normalize agent_settings and secrets_store inputs."""
         # Import Secrets here to avoid circular imports
         from openhands.app_server.secrets.secrets_models import Secrets
@@ -620,16 +616,18 @@ class Settings(BaseModel):
         if not isinstance(data, dict):
             return data
 
+        if 'secrets_store' not in data or data['secrets_store'] is None:
+            data['secrets_store'] = Secrets()
+
         # --- Agent settings: coerce SecretStr leaves to plain strings ---
         agent_settings = data.get('agent_settings')
+        context = info.context if isinstance(info.context, dict) else None
         if isinstance(agent_settings, dict):
             data['agent_settings'] = _load_persisted_agent_settings(
-                _coerce_dict_secrets(agent_settings)
-            ).model_dump(mode='json', context={'expose_secrets': True})
-        elif isinstance(agent_settings, (OpenHandsAgentSettings, ACPAgentSettings)):
-            data['agent_settings'] = agent_settings.model_dump(
-                mode='json', context={'expose_secrets': True}
+                _coerce_dict_secrets(agent_settings), context=context
             )
+        elif isinstance(agent_settings, (OpenHandsAgentSettings, ACPAgentSettings)):
+            data['agent_settings'] = agent_settings
 
         # --- Conversation settings: normalize ---
         conversation_settings = data.get('conversation_settings')

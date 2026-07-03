@@ -20,6 +20,10 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from storage.database import a_session_maker
+from storage.encrypt_utils import (
+    get_settings_cipher_context,
+    get_settings_storage_context,
+)
 from storage.lite_llm_manager import (
     LiteLlmManager,
     get_openhands_cloud_key_alias,
@@ -83,7 +87,9 @@ class OrgStore:
         # rename) and returns the actual variant. ACP settings are returned as
         # ``ACPAgentSettings``, not coerced into the OpenHands shape — that
         # coercion 500s on ACP's nullable ``agent_context``.
-        return _load_persisted_agent_settings(dict(org.agent_settings))
+        return _load_persisted_agent_settings(
+            dict(org.agent_settings), context=get_settings_cipher_context()
+        )
 
     @staticmethod
     def get_conversation_settings_from_org(org: Org) -> ConversationSettings:
@@ -349,7 +355,10 @@ class OrgStore:
         (OpenHands or ACP) rather than a coerced OpenHands shape.
         """
         if settings_type is OpenHandsAgentSettings:
-            return apply_agent_settings_diff(current_settings or {}, settings_diff)
+            base_settings = _load_persisted_agent_settings(
+                current_settings or {}, context=get_settings_cipher_context()
+            ).model_dump(mode='json', context={'expose_secrets': True})
+            return apply_agent_settings_diff(base_settings, settings_diff)
 
         base_settings = _load_persisted_conversation_settings(current_settings)  # type: ignore[assignment]
         merged_settings = deep_merge(
@@ -416,7 +425,12 @@ class OrgStore:
                     org.agent_settings,
                     agent_settings_diff,
                     OpenHandsAgentSettings,
-                ).model_dump(mode='json', exclude_unset=True)
+                ).model_dump(
+                    mode='json',
+                    context=get_settings_storage_context(),
+                    exclude_unset=True,
+                    exclude={'llm': {'api_key'}},
+                )
 
             if conversation_settings_diff is not None:
                 org.conversation_settings = OrgStore._merge_and_validate_settings(
@@ -478,6 +492,14 @@ class OrgStore:
     @staticmethod
     def get_kwargs_from_settings(settings: Settings):
         dumped = settings.model_dump(mode='json', context={'expose_secrets': True})
+        dumped['agent_settings'] = settings.agent_settings.model_dump(
+            mode='json',
+            context=get_settings_storage_context(),
+            exclude={'llm': {'api_key'}},
+        )
+        dumped['llm_profiles'] = settings.llm_profiles.model_dump(
+            mode='json', context=get_settings_storage_context()
+        )
         return {
             field: dumped[field] for field in _ORG_SETTINGS_FIELDS if field in dumped
         }

@@ -11,6 +11,26 @@ from sqlalchemy.engine.interfaces import Dialect
 
 _jwt_service = None
 _fernet = None
+_settings_cipher = None
+_FERNET_TOKEN_PREFIX = 'gAAAA'
+
+
+class _SettingsReadCipher:
+    def __init__(self, cipher):
+        self._cipher = cipher
+
+    def encrypt(self, secret: SecretStr | None) -> str | None:
+        return self._cipher.encrypt(secret)
+
+    def decrypt(self, secret: str | None) -> SecretStr | None:
+        if secret is None:
+            return None
+        if not secret.startswith(_FERNET_TOKEN_PREFIX):
+            return SecretStr(secret)
+        return self._cipher.decrypt(secret)
+
+    def try_decrypt_str(self, secret: str) -> str | None:
+        return self._cipher.try_decrypt_str(secret)
 
 
 def encrypt_value(value: str | SecretStr) -> str:
@@ -32,6 +52,26 @@ def get_jwt_service():
         assert jwt_service_injector is not None
         _jwt_service = jwt_service_injector.get_jwt_service()
     return _jwt_service
+
+
+def get_settings_cipher():
+    """Return the SDK cipher used for field-level settings encryption."""
+    from openhands.sdk.utils.cipher import Cipher
+
+    global _settings_cipher
+    if _settings_cipher is None:
+        jwt_svc = get_jwt_service()
+        default_key = jwt_svc.get_key(jwt_svc._default_key_id)
+        _settings_cipher = Cipher(default_key.key.get_secret_value())
+    return _settings_cipher
+
+
+def get_settings_cipher_context() -> dict[str, Any]:
+    return {'cipher': _SettingsReadCipher(get_settings_cipher())}
+
+
+def get_settings_storage_context() -> dict[str, Any]:
+    return {'expose_secrets': 'encrypted', 'cipher': get_settings_cipher()}
 
 
 def decrypt_legacy_model(decrypt_keys: list, model_instance) -> dict:
@@ -90,20 +130,7 @@ def model_to_kwargs(model_instance):
 
 
 class EncryptedJSON(TypeDecorator[dict[str, Any]]):
-    """JSON column whose serialized payload is encrypted at rest.
-
-    Accepts either a plain ``dict`` or a pydantic ``BaseModel``. Pydantic
-    models are dumped via ``model_dump(mode='json', context={'expose_secrets': True})``
-    so nested ``SecretStr`` values keep their real payload — the column
-    itself is the encryption boundary, so masking on the way in would
-    corrupt round-trips.
-
-    Use for JSON payloads that may contain secrets (e.g. nested ``api_key``
-    fields) where the existing ``_<field>`` String + property pattern is
-    awkward — this keeps the column accessible as a normal ORM attribute
-    while encrypting the entire JSON blob via the same JWE service used
-    by ``encrypt_value``/``decrypt_value``.
-    """
+    """JSON column whose serialized payload is encrypted at rest."""
 
     impl = String
     cache_ok = True
@@ -123,3 +150,48 @@ class EncryptedJSON(TypeDecorator[dict[str, Any]]):
         if value is None:
             return None
         return json.loads(decrypt_value(value))
+
+
+class SecretAwareJSON(TypeDecorator[dict[str, Any]]):
+    """JSON string column that encrypts nested Pydantic secret fields only.
+
+    The database value remains parseable JSON for non-secret operational data,
+    while SDK serializers encrypt fields such as LLM ``api_key`` values. Older
+    rows written by :class:`EncryptedJSON` are still accepted on read.
+    """
+
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(
+        self, value: BaseModel | dict[str, Any] | None, dialect: Dialect
+    ) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump(
+                mode='json', context=get_settings_storage_context()
+            )
+        else:
+            value = _encrypt_known_settings_payload(value)
+        return json.dumps(value)
+
+    def process_result_value(
+        self, value: str | None, dialect: Dialect
+    ) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return json.loads(decrypt_value(value))
+
+
+def _encrypt_known_settings_payload(value: dict[str, Any]) -> dict[str, Any]:
+    if 'profiles' in value:
+        from openhands.app_server.settings.llm_profiles import LLMProfiles
+
+        return LLMProfiles.model_validate(
+            value, context=get_settings_cipher_context()
+        ).model_dump(mode='json', context=get_settings_storage_context())
+    return value

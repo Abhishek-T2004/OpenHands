@@ -9,7 +9,7 @@ from server.constants import DEFAULT_BILLING_MARGIN
 from sqlalchemy import JSON, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from storage.base import Base
-from storage.encrypt_utils import EncryptedJSON, decrypt_value, encrypt_value
+from storage.encrypt_utils import SecretAwareJSON, decrypt_value, encrypt_value
 
 from openhands.app_server.settings.settings_models import MarketplaceRegistration
 
@@ -69,9 +69,9 @@ class Org(Base):
     # Set by completed billing sessions or when positive org credits are detected.
     byor_export_enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
     sandbox_grouping_strategy: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Encrypted column for LLM profiles (contains API keys)
+    # JSON column with encrypted secret leaf fields for LLM profiles.
     llm_profiles: Mapped[dict[str, Any] | None] = mapped_column(
-        EncryptedJSON, nullable=True
+        SecretAwareJSON, nullable=True
     )
     # Marks the bootstrapped default org on OHE installs; a partial unique
     # index allows at most one default org per install.

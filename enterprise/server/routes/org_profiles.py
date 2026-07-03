@@ -21,6 +21,10 @@ from server.routes.org_models import OrgNotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from storage.database import a_session_maker
+from storage.encrypt_utils import (
+    get_settings_cipher_context,
+    get_settings_storage_context,
+)
 from storage.org import Org
 from storage.org_member import OrgMember
 from storage.org_service import OrgService
@@ -109,7 +113,9 @@ def _load_profiles(org: Org) -> LLMProfiles:
     if org.llm_profiles is None:
         return LLMProfiles()
     try:
-        return LLMProfiles.model_validate(org.llm_profiles)
+        return LLMProfiles.model_validate(
+            org.llm_profiles, context=get_settings_cipher_context()
+        )
     except ValidationError as exc:
         # Schema drift / partially-invalid stored profiles: degrade to empty
         # rather than 500-ing. Other exceptions (DB decrypt failures, etc.)
@@ -157,7 +163,7 @@ async def _org_profiles_transaction(
         profiles = _load_profiles(org)
         yield session, org, profiles
         org.llm_profiles = profiles.model_dump(
-            mode='json', context={'expose_secrets': True}
+            mode='json', context=get_settings_storage_context()
         )
         await session.commit()
 
@@ -228,7 +234,9 @@ async def save_profile(
             # Snapshot current org LLM settings. Route through the persisted
             # loader so legacy/canonical ``agent_kind`` discriminator values
             # ('llm' vs 'openhands') both validate.
-            llm = _load_persisted_agent_settings(org.agent_settings).llm
+            llm = _load_persisted_agent_settings(
+                org.agent_settings, context=get_settings_cipher_context()
+            ).llm
         if request.preserve_existing_api_key and existing is not None:
             # Caller has no new key: keep the profile's stored key (even "no
             # key") instead of the snapshotted one.

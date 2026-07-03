@@ -9,6 +9,7 @@ from pydantic import (
     SecretStr,
     SerializationInfo,
     ValidationError,
+    ValidationInfo,
     field_serializer,
     field_validator,
     model_validator,
@@ -156,7 +157,7 @@ class LLMProfiles(BaseModel):
 
     @field_validator('profiles', mode='before')
     @classmethod
-    def _skip_invalid_profiles(cls, value: Any) -> Any:
+    def _skip_invalid_profiles(cls, value: Any, info: ValidationInfo) -> Any:
         """Best-effort per-profile load: skip entries that fail to validate.
 
         Guards against schema drift — if a single stored profile becomes
@@ -166,12 +167,13 @@ class LLMProfiles(BaseModel):
         if not isinstance(value, dict):
             return value
         valid: dict[str, Any] = {}
+        context = info.context if isinstance(info.context, dict) else None
         for name, raw in value.items():
             if isinstance(raw, LLM):
                 valid[name] = raw
                 continue
             try:
-                valid[name] = LLM.model_validate(raw)
+                valid[name] = LLM.model_validate(raw, context=context)
             except ValidationError as exc:
                 logger.warning('Skipping invalid LLM profile %r: %s', name, exc)
         return valid

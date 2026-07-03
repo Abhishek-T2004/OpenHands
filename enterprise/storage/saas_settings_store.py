@@ -13,6 +13,10 @@ from server.routes.org_models import OrgMemberSettingsUpdate
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from storage.database import a_session_maker
+from storage.encrypt_utils import (
+    get_settings_cipher_context,
+    get_settings_storage_context,
+)
 from storage.lite_llm_manager import LiteLlmManager, get_openhands_cloud_key_alias
 from storage.org import Org
 from storage.org_member import OrgMember
@@ -25,6 +29,7 @@ from storage.user_store import UserStore
 from openhands.app_server.settings.llm_profiles import LLMProfiles
 from openhands.app_server.settings.settings_models import (
     Settings,
+    _load_persisted_agent_settings,
 )
 from openhands.app_server.settings.settings_store import SettingsStore
 from openhands.app_server.utils.jsonpatch_compat import (
@@ -139,7 +144,11 @@ class SaasSettingsStore(SettingsStore):
 
     @staticmethod
     def _get_persisted_agent_settings(item: Settings) -> dict[str, Any]:
-        return item.agent_settings.model_dump(mode='json')
+        return item.agent_settings.model_dump(
+            mode='json',
+            context=get_settings_storage_context(),
+            exclude={'llm': {'api_key'}},
+        )
 
     async def load(self) -> Settings | None:
         user = await UserStore.get_user_by_id(self.user_id)
@@ -161,7 +170,6 @@ class SaasSettingsStore(SettingsStore):
                 f'Org not found for ID {org_id} as the current org for user {self.user_id}'
             )
             return None
-        org_agent_settings = OrgStore.get_agent_settings_from_org(org)
         member_agent_settings_diff = dict(org_member.agent_settings_diff)
 
         kwargs = {
@@ -185,13 +193,16 @@ class SaasSettingsStore(SettingsStore):
         # legacy org-level values (older code paths broadcast mcp_config)
         # can no longer leak one member's private config to another. Each
         # member's own ``agent_settings_diff`` still supplies their values.
-        org_agent_settings_dump = org_agent_settings.model_dump(mode='json')
+        org_agent_settings_dump = dict(org.agent_settings)
         for private_key in MEMBER_PRIVATE_AGENT_KEYS:
             org_agent_settings_dump.pop(private_key, None)
         merged_agent_settings = deep_merge(
             org_agent_settings_dump,
             member_agent_settings_diff,
         )
+        merged_agent_settings = _load_persisted_agent_settings(
+            merged_agent_settings, context=get_settings_cipher_context()
+        ).model_dump(mode='json', context={'expose_secrets': True})
         effective_llm_api_key = self._get_effective_llm_api_key(org, org_member)
         if effective_llm_api_key is not None:
             merged_agent_settings.setdefault('llm', {})['api_key'] = (
@@ -253,7 +264,9 @@ class SaasSettingsStore(SettingsStore):
         # the org has none — handles older personal accounts whose profiles
         # never moved to the org column.
         if org.llm_profiles:
-            profiles_data = dict(org.llm_profiles)
+            profiles_data = LLMProfiles.model_validate(
+                org.llm_profiles, context=get_settings_cipher_context()
+            ).model_dump(mode='json', context={'expose_secrets': True})
             raw_profiles = profiles_data.get('profiles')
             if isinstance(raw_profiles, dict):
                 profiles_data['profiles'] = {
@@ -319,7 +332,7 @@ class SaasSettingsStore(SettingsStore):
         through the management API is never clobbered.
         """
         serialized = llm_profiles.model_dump(
-            mode='json', context={'expose_secrets': True}
+            mode='json', context=get_settings_storage_context()
         )
         async with a_session_maker() as session:
             result = await session.execute(
@@ -417,9 +430,7 @@ class SaasSettingsStore(SettingsStore):
             # Strip any pre-existing private keys from the org dump before
             # merging, so legacy values written by older code paths are
             # cleaned up on the next save and stop leaking to other members.
-            org_agent_settings_dump = OrgStore.get_agent_settings_from_org(
-                org
-            ).model_dump(mode='json')
+            org_agent_settings_dump = dict(org.agent_settings)
             for private_key in MEMBER_PRIVATE_AGENT_KEYS:
                 org_agent_settings_dump.pop(private_key, None)
 
@@ -440,6 +451,9 @@ class SaasSettingsStore(SettingsStore):
             )
 
             kwargs = item.model_dump(context={'expose_secrets': True})
+            kwargs['llm_profiles'] = item.llm_profiles.model_dump(
+                mode='json', context=get_settings_storage_context()
+            )
             kwargs.pop('agent_settings', None)
             kwargs.pop('conversation_settings', None)
 

@@ -10,7 +10,7 @@ from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from storage.base import Base
-from storage.encrypt_utils import EncryptedJSON
+from storage.encrypt_utils import SecretAwareJSON
 
 if TYPE_CHECKING:
     from storage.org import Org
@@ -45,7 +45,7 @@ class User(Base):
     default_sandbox_spec_id: Mapped[str | None] = mapped_column(String, nullable=True)
     disabled_skills: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     llm_profiles: Mapped[dict[str, Any] | None] = mapped_column(
-        EncryptedJSON, nullable=True
+        SecretAwareJSON, nullable=True
     )
     onboarding_completed: Mapped[bool | None] = mapped_column(
         nullable=True, default=False

@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 from server.constants import LITE_LLM_API_URL
+from storage.encrypt_utils import get_settings_cipher_context
 from storage.org import Org
 from storage.org_member import OrgMember
 from storage.role import Role
@@ -238,7 +239,9 @@ class OrgResponse(BaseModel):
             sandbox_base_container_image=org.sandbox_base_container_image,
             sandbox_runtime_container_image=org.sandbox_runtime_container_image,
             org_version=org.org_version if org.org_version is not None else 0,
-            agent_settings=_load_persisted_agent_settings(org.agent_settings),
+            agent_settings=_load_persisted_agent_settings(
+                org.agent_settings, context=get_settings_cipher_context()
+            ),
             conversation_settings=_load_persisted_conversation_settings(
                 org.conversation_settings
             ),
@@ -450,7 +453,9 @@ class OrgDefaultsSettingsResponse(BaseModel):
         organization responses should not reverse-map model names. Secret
         values are still stripped before returning the response.
         """
-        agent_settings = _load_persisted_agent_settings(org.agent_settings)
+        agent_settings = _load_persisted_agent_settings(
+            org.agent_settings, context=get_settings_cipher_context()
+        )
         cls._prepare_llm_for_response(agent_settings)
         return cls(
             agent_settings=agent_settings,
