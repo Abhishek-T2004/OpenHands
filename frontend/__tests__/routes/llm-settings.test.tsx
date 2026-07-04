@@ -1094,11 +1094,9 @@ describe("LlmSettingsScreen", () => {
       MOCK_DEFAULT_USER_SETTINGS.agent_settings_schema!,
     );
     const existingMcpConfig = {
-      mcpServers: {
-        tavily: {
-          transport: "http",
-          url: "https://example.com/mcp",
-        },
+      tavily: {
+        transport: "http",
+        url: "https://example.com/mcp",
       },
     };
 

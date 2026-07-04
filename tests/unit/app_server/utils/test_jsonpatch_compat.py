@@ -53,38 +53,34 @@ class TestDeepMergeWithWholesaleKeys:
         base = {
             'llm': {'model': 'gpt-4'},
             'mcp_config': {
-                'mcpServers': {
-                    'server1': {'url': 'https://s1.com'},
-                    'server2': {'url': 'https://s2.com'},
-                    'server3': {'url': 'https://s3.com'},
-                }
+                'server1': {'url': 'https://s1.com'},
+                'server2': {'url': 'https://s2.com'},
+                'server3': {'url': 'https://s3.com'},
             },
         }
         updates = {
             'mcp_config': {
-                'mcpServers': {
-                    'server1': {'url': 'https://s1.com'},
-                    'server2': {'url': 'https://s2.com'},
-                    # server3 deleted
-                }
+                'server1': {'url': 'https://s1.com'},
+                'server2': {'url': 'https://s2.com'},
+                # server3 deleted
             }
         }
 
         result = deep_merge_with_wholesale_keys(base, updates)
 
         # server3 should NOT be resurrected
-        assert len(result['mcp_config']['mcpServers']) == 2
-        assert 'server3' not in result['mcp_config']['mcpServers']
+        assert len(result['mcp_config']) == 2
+        assert 'server3' not in result['mcp_config']
 
     def test_other_keys_still_deep_merged(self):
         """Non-wholesale keys should still be deep merged."""
         base = {
             'llm': {'model': 'gpt-4', 'temperature': 0.7},
-            'mcp_config': {'mcpServers': {'old': {}}},
+            'mcp_config': {'old': {}},
         }
         updates = {
             'llm': {'model': 'gpt-5'},  # should merge
-            'mcp_config': {'mcpServers': {'new': {}}},  # should replace
+            'mcp_config': {'new': {}},  # should replace
         }
 
         result = deep_merge_with_wholesale_keys(base, updates)
@@ -94,14 +90,14 @@ class TestDeepMergeWithWholesaleKeys:
         assert result['llm']['temperature'] == 0.7
 
         # mcp_config should be replaced (old server gone)
-        assert 'old' not in result['mcp_config']['mcpServers']
-        assert 'new' in result['mcp_config']['mcpServers']
+        assert 'old' not in result['mcp_config']
+        assert 'new' in result['mcp_config']
 
     def test_wholesale_key_not_in_updates(self):
         """If wholesale key not in updates, it should be preserved from base."""
         base = {
             'llm': {'model': 'gpt-4'},
-            'mcp_config': {'mcpServers': {'existing': {'url': 'https://existing.com'}}},
+            'mcp_config': {'existing': {'url': 'https://existing.com'}},
         }
         updates = {
             'llm': {'model': 'gpt-5'}
@@ -112,27 +108,23 @@ class TestDeepMergeWithWholesaleKeys:
 
         # mcp_config should be preserved (deep merged, not cleared)
         assert 'mcp_config' in result
-        assert 'existing' in result['mcp_config']['mcpServers']
+        assert 'existing' in result['mcp_config']
 
     def test_empty_wholesale_value(self):
         """Empty dict for wholesale key should clear it."""
         base = {
             'mcp_config': {
-                'mcpServers': {
-                    'server1': {'url': 'https://s1.com'},
-                    'server2': {'url': 'https://s2.com'},
-                }
+                'server1': {'url': 'https://s1.com'},
+                'server2': {'url': 'https://s2.com'},
             }
         }
         updates = {
-            'mcp_config': {
-                'mcpServers': {}  # delete all servers
-            }
+            'mcp_config': {}  # delete all servers
         }
 
         result = deep_merge_with_wholesale_keys(base, updates)
 
-        assert result['mcp_config']['mcpServers'] == {}
+        assert result['mcp_config'] == {}
 
     def test_custom_wholesale_keys(self):
         """Should support custom wholesale keys via parameter."""
@@ -153,11 +145,11 @@ class TestDeepMergeWithWholesaleKeys:
 
     def test_does_not_mutate_inputs(self):
         """Should not mutate base or updates."""
-        base = {'mcp_config': {'mcpServers': {'s1': {}}}}
-        updates = {'mcp_config': {'mcpServers': {'s2': {}}}}
+        base = {'mcp_config': {'s1': {}}}
+        updates = {'mcp_config': {'s2': {}}}
 
-        base_copy = {'mcp_config': {'mcpServers': {'s1': {}}}}
-        updates_copy = {'mcp_config': {'mcpServers': {'s2': {}}}}
+        base_copy = {'mcp_config': {'s1': {}}}
+        updates_copy = {'mcp_config': {'s2': {}}}
 
         deep_merge_with_wholesale_keys(base, updates)
 

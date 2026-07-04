@@ -32,9 +32,7 @@ describe("MCP Server Mutation Hooks", () => {
         .mockResolvedValue({
           agent_settings: {
             mcp_config: {
-              mcpServers: {
-                existing: { url: "https://existing.com", transport: "sse" },
-              },
+              existing: { url: "https://existing.com", transport: "sse" },
             },
           },
         } as any);
@@ -59,11 +57,9 @@ describe("MCP Server Mutation Hooks", () => {
       expect(getSettingsSpy).toHaveBeenCalledTimes(1);
       expect(saveSettingsSpy).toHaveBeenCalledWith({
         agent_settings_diff: {
-          mcp_config: {
-            mcpServers: expect.objectContaining({
-              existing: expect.objectContaining({ url: "https://existing.com" }),
-            }),
-          },
+          mcp_config: expect.objectContaining({
+            existing: expect.objectContaining({ url: "https://existing.com" }),
+          }),
         },
       });
     });
@@ -93,11 +89,9 @@ describe("MCP Server Mutation Hooks", () => {
       expect(saveSettingsSpy).toHaveBeenCalledWith({
         agent_settings_diff: {
           mcp_config: {
-            mcpServers: {
-              sse: {
-                url: "https://first-server.com",
-                transport: "sse",
-              },
+            sse: {
+              url: "https://first-server.com",
+              transport: "sse",
             },
           },
         },
@@ -128,11 +122,9 @@ describe("MCP Server Mutation Hooks", () => {
       expect(saveSettingsSpy).toHaveBeenCalledWith({
         agent_settings_diff: {
           mcp_config: {
-            mcpServers: {
-              sse: {
-                url: "https://server.com",
-                transport: "sse",
-              },
+            sse: {
+              url: "https://server.com",
+              transport: "sse",
             },
           },
         },
@@ -145,11 +137,9 @@ describe("MCP Server Mutation Hooks", () => {
       vi.spyOn(SettingsService, "getSettings").mockResolvedValue({
         agent_settings: {
           mcp_config: {
-            mcpServers: {
-              server1: { url: "https://server1.com", transport: "sse" },
-              server2: { url: "https://server2.com", transport: "sse" },
-              server3: { url: "https://server3.com", transport: "sse" },
-            },
+            server1: { url: "https://server1.com", transport: "sse" },
+            server2: { url: "https://server2.com", transport: "sse" },
+            server3: { url: "https://server3.com", transport: "sse" },
           },
         },
       } as any);
@@ -171,11 +161,11 @@ describe("MCP Server Mutation Hooks", () => {
 
       const savedPayload = saveSettingsSpy.mock.calls[0][0] as {
         agent_settings_diff: {
-          mcp_config: { mcpServers: Record<string, unknown> } | null;
+          mcp_config: Record<string, unknown> | null;
         };
       };
       const savedConfig = savedPayload.agent_settings_diff.mcp_config;
-      const serverNames = Object.keys(savedConfig?.mcpServers ?? {});
+      const serverNames = Object.keys(savedConfig ?? {});
       expect(serverNames).toHaveLength(2);
     });
 
@@ -209,9 +199,7 @@ describe("MCP Server Mutation Hooks", () => {
       vi.spyOn(SettingsService, "getSettings").mockResolvedValue({
         agent_settings: {
           mcp_config: {
-            mcpServers: {
-              myserver: { url: "https://old-url.com", transport: "sse" },
-            },
+            myserver: { url: "https://old-url.com", transport: "sse" },
           },
         },
       } as any);
@@ -239,13 +227,11 @@ describe("MCP Server Mutation Hooks", () => {
 
       const savedPayload = saveSettingsSpy.mock.calls[0][0] as {
         agent_settings_diff: {
-          mcp_config: { mcpServers: Record<string, { url: string }> };
+          mcp_config: Record<string, { url: string }>;
         };
       };
       const savedConfig = savedPayload.agent_settings_diff.mcp_config;
-      const serverUrls = Object.values(savedConfig.mcpServers).map(
-        (s) => s.url,
-      );
+      const serverUrls = Object.values(savedConfig).map((s) => s.url);
       expect(serverUrls).toContain("https://new-url.com");
     });
   });

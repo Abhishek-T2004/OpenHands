@@ -128,11 +128,9 @@ class TestSanitizeConfig:
     def test_redacts_url_query_params_in_mcp_config(self):
         """Reproduce the exact Datadog leak: tavilyApiKey in URL query params."""
         config = {
-            'mcpServers': {
-                'tavily': {
-                    'url': 'https://mcp.tavily.com/mcp/?tavilyApiKey=tvly-realkey123',
-                    'transport': 'http',
-                }
+            'tavily': {
+                'url': 'https://mcp.tavily.com/mcp/?tavilyApiKey=tvly-realkey123',
+                'transport': 'http',
             }
         }
         sanitized = sanitize_config(config)
@@ -142,13 +140,11 @@ class TestSanitizeConfig:
     def test_redacts_header_api_keys_in_mcp_config(self):
         """Reproduce the Datadog leak: X-Session-API-Key in headers."""
         config = {
-            'mcpServers': {
-                'myserver': {
-                    'url': 'https://example.com/mcp',
-                    'headers': {
-                        'X-Session-API-Key': 'sk-oh-realsessionkey456',
-                    },
-                }
+            'myserver': {
+                'url': 'https://example.com/mcp',
+                'headers': {
+                    'X-Session-API-Key': 'sk-oh-realsessionkey456',
+                },
             }
         }
         sanitized = sanitize_config(config)
@@ -157,18 +153,16 @@ class TestSanitizeConfig:
     def test_combined_url_and_header_secrets(self):
         """Full scenario matching the production Datadog log pattern."""
         config = {
-            'mcpServers': {
-                'tavily': {
-                    'url': 'https://mcp.tavily.com/mcp/?tavilyApiKey=tvly-realkey123',
-                    'transport': 'http',
+            'tavily': {
+                'url': 'https://mcp.tavily.com/mcp/?tavilyApiKey=tvly-realkey123',
+                'transport': 'http',
+            },
+            'internal': {
+                'url': 'https://internal.example.com/mcp',
+                'headers': {
+                    'X-Session-API-Key': 'sk-oh-realsessionkey456',
                 },
-                'internal': {
-                    'url': 'https://internal.example.com/mcp',
-                    'headers': {
-                        'X-Session-API-Key': 'sk-oh-realsessionkey456',
-                    },
-                },
-            }
+            },
         }
         sanitized = sanitize_config(config)
         output = str(sanitized)

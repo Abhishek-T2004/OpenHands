@@ -34,13 +34,42 @@ describe("parseMcpConfig", () => {
     });
   });
 
+  it("should return frontend MCP config values unchanged", () => {
+    const input: MCPConfig = {
+      sse_servers: [{ name: "sse", url: "https://sse.example" }],
+      stdio_servers: [{ name: "stdio", command: "server" }],
+      shttp_servers: [{ name: "http", url: "https://http.example" }],
+    };
+
+    expect(parseMcpConfig(input)).toEqual(input);
+  });
+
+  it("should ignore server-map entries without url or command", () => {
+    expect(parseMcpConfig({ tools: [], settings: {} })).toEqual({
+      sse_servers: [],
+      stdio_servers: [],
+      shttp_servers: [],
+    });
+  });
+
+  it("should parse legacy mcpServers wrapper values", () => {
+    const result = parseMcpConfig({
+      mcpServers: {
+        wrapped: { url: "https://wrapped.example", transport: "sse" },
+      },
+    });
+
+    expect(result.sse_servers[0]).toEqual({
+      name: "wrapped",
+      url: "https://wrapped.example",
+    });
+  });
+
   it("should preserve server names for SSE servers", () => {
     const input = {
-      mcpServers: {
-        "my-custom-name": {
-          url: "https://example.com",
-          transport: "sse",
-        },
+      "my-custom-name": {
+        url: "https://example.com",
+        transport: "sse",
       },
     };
 
@@ -55,11 +84,9 @@ describe("parseMcpConfig", () => {
 
   it("should preserve server names for shttp servers", () => {
     const input = {
-      mcpServers: {
-        "http-server": {
-          url: "https://example.com",
-          transport: "http",
-        },
+      "http-server": {
+        url: "https://example.com",
+        transport: "http",
       },
     };
 
@@ -74,11 +101,9 @@ describe("parseMcpConfig", () => {
 
   it("should preserve server names for stdio servers", () => {
     const input = {
-      mcpServers: {
-        "my-stdio-server": {
-          command: "/usr/bin/my-server",
-          args: ["--port", "8080"],
-        },
+      "my-stdio-server": {
+        command: "/usr/bin/my-server",
+        args: ["--port", "8080"],
       },
     };
 
@@ -94,12 +119,10 @@ describe("parseMcpConfig", () => {
 
   it("should parse api_key from auth field", () => {
     const input = {
-      mcpServers: {
-        "auth-server": {
-          url: "https://example.com",
-          transport: "sse",
-          auth: "my-secret-key",
-        },
+      "auth-server": {
+        url: "https://example.com",
+        transport: "sse",
+        auth: "my-secret-key",
       },
     };
 
@@ -114,12 +137,10 @@ describe("parseMcpConfig", () => {
 
   it("should not include api_key when auth is 'oauth'", () => {
     const input = {
-      mcpServers: {
-        "oauth-server": {
-          url: "https://example.com",
-          transport: "sse",
-          auth: "oauth",
-        },
+      "oauth-server": {
+        url: "https://example.com",
+        transport: "sse",
+        auth: "oauth",
       },
     };
 
@@ -134,12 +155,10 @@ describe("parseMcpConfig", () => {
 
   it("should parse timeout for shttp servers", () => {
     const input = {
-      mcpServers: {
-        "timeout-server": {
-          url: "https://example.com",
-          transport: "http",
-          timeout: 30,
-        },
+      "timeout-server": {
+        url: "https://example.com",
+        transport: "http",
+        timeout: 30,
       },
     };
 
@@ -174,11 +193,9 @@ describe("toSdkMcpConfig", () => {
     const result = toSdkMcpConfig(config);
 
     expect(result).toEqual({
-      mcpServers: {
-        "my-custom-name": {
-          url: "https://example.com",
-          transport: "sse",
-        },
+      "my-custom-name": {
+        url: "https://example.com",
+        transport: "sse",
       },
     });
   });
@@ -193,11 +210,9 @@ describe("toSdkMcpConfig", () => {
     const result = toSdkMcpConfig(config);
 
     expect(result).toEqual({
-      mcpServers: {
-        sse: {
-          url: "https://example.com",
-          transport: "sse",
-        },
+      sse: {
+        url: "https://example.com",
+        transport: "sse",
       },
     });
   });
@@ -215,12 +230,12 @@ describe("toSdkMcpConfig", () => {
 
     const result = toSdkMcpConfig(config);
 
-    expect(result?.mcpServers).toHaveProperty("sse");
-    expect(result?.mcpServers).toHaveProperty("sse_1");
-    expect(result?.mcpServers).toHaveProperty("sse_2");
-    expect(result?.mcpServers["sse"].url).toBe("https://example1.com");
-    expect(result?.mcpServers["sse_1"].url).toBe("https://example2.com");
-    expect(result?.mcpServers["sse_2"].url).toBe("https://example3.com");
+    expect(result).toHaveProperty("sse");
+    expect(result).toHaveProperty("sse_1");
+    expect(result).toHaveProperty("sse_2");
+    expect(result?.["sse"].url).toBe("https://example1.com");
+    expect(result?.["sse_1"].url).toBe("https://example2.com");
+    expect(result?.["sse_2"].url).toBe("https://example3.com");
   });
 
   it("should serialize api_key as an Authorization bearer header", () => {
@@ -238,12 +253,12 @@ describe("toSdkMcpConfig", () => {
 
     const result = toSdkMcpConfig(config);
 
-    expect(result?.mcpServers["secure"]).toEqual({
+    expect(result?.["secure"]).toEqual({
       url: "https://example.com",
       transport: "sse",
       headers: { Authorization: "Bearer my-secret" },
     });
-    expect(result?.mcpServers["shttp"]).toEqual({
+    expect(result?.["shttp"]).toEqual({
       url: "https://shttp.example",
       headers: { Authorization: "Bearer shttp-secret" },
     });
@@ -251,11 +266,9 @@ describe("toSdkMcpConfig", () => {
 
   it("round-trips persisted Authorization headers back to api_key fields", () => {
     const persisted = {
-      mcpServers: {
-        shttp: {
-          url: "https://shttp.example",
-          headers: { Authorization: "Bearer shttp-secret" },
-        },
+      shttp: {
+        url: "https://shttp.example",
+        headers: { Authorization: "Bearer shttp-secret" },
       },
     };
 
@@ -268,24 +281,20 @@ describe("toSdkMcpConfig", () => {
 
   it("migrates legacy auth credentials to Authorization headers on re-serialize", () => {
     const persisted = {
-      mcpServers: {
-        sse: {
-          url: "https://example.com",
-          transport: "sse",
-          auth: "legacy-secret",
-        },
+      sse: {
+        url: "https://example.com",
+        transport: "sse",
+        auth: "legacy-secret",
       },
     };
 
     const written = toSdkMcpConfig(parseMcpConfig(persisted));
 
     expect(written).toEqual({
-      mcpServers: {
-        sse: {
-          url: "https://example.com",
-          transport: "sse",
-          headers: { Authorization: "Bearer legacy-secret" },
-        },
+      sse: {
+        url: "https://example.com",
+        transport: "sse",
+        headers: { Authorization: "Bearer legacy-secret" },
       },
     });
   });
@@ -301,7 +310,7 @@ describe("toSdkMcpConfig", () => {
 
     const result = toSdkMcpConfig(config);
 
-    expect(result?.mcpServers["timeout"]).toEqual({
+    expect(result?.["timeout"]).toEqual({
       url: "https://example.com",
       timeout: 60,
     });
@@ -323,7 +332,7 @@ describe("toSdkMcpConfig", () => {
 
     const result = toSdkMcpConfig(config);
 
-    expect(result?.mcpServers["my-stdio"]).toEqual({
+    expect(result?.["my-stdio"]).toEqual({
       command: "/usr/bin/server",
       args: ["--flag"],
       env: { KEY: "value" },
@@ -334,51 +343,47 @@ describe("toSdkMcpConfig", () => {
 describe("round-trip preservation", () => {
   it("should preserve server names through parse -> serialize round-trip", () => {
     const original = {
-      mcpServers: {
-        "custom-sse-name": {
-          url: "https://sse.example.com",
-          transport: "sse",
-        },
-        "custom-http-name": {
-          url: "https://http.example.com",
-          transport: "http",
-        },
-        "custom-stdio-name": {
-          command: "/usr/bin/server",
-        },
+      "custom-sse-name": {
+        url: "https://sse.example.com",
+        transport: "sse",
+      },
+      "custom-http-name": {
+        url: "https://http.example.com",
+        transport: "http",
+      },
+      "custom-stdio-name": {
+        command: "/usr/bin/server",
       },
     };
 
     const parsed = parseMcpConfig(original);
     const serialized = toSdkMcpConfig(parsed);
 
-    expect(serialized?.mcpServers).toHaveProperty("custom-sse-name");
-    expect(serialized?.mcpServers).toHaveProperty("custom-http-name");
-    expect(serialized?.mcpServers).toHaveProperty("custom-stdio-name");
+    expect(serialized).toHaveProperty("custom-sse-name");
+    expect(serialized).toHaveProperty("custom-http-name");
+    expect(serialized).toHaveProperty("custom-stdio-name");
   });
 
   it("should not generate new names if original names are preserved", () => {
     const original = {
-      mcpServers: {
-        server1: { url: "https://server1.com", transport: "sse" },
-        server2: { url: "https://server2.com", transport: "sse" },
-      },
+      server1: { url: "https://server1.com", transport: "sse" },
+      server2: { url: "https://server2.com", transport: "sse" },
     };
 
     const parsed = parseMcpConfig(original);
     const serialized = toSdkMcpConfig(parsed);
 
     // Should use original names, not "sse" or "sse_1"
-    expect(serialized?.mcpServers).toHaveProperty("server1");
-    expect(serialized?.mcpServers).toHaveProperty("server2");
-    expect(serialized?.mcpServers).not.toHaveProperty("sse");
-    expect(serialized?.mcpServers).not.toHaveProperty("sse_1");
+    expect(serialized).toHaveProperty("server1");
+    expect(serialized).toHaveProperty("server2");
+    expect(serialized).not.toHaveProperty("sse");
+    expect(serialized).not.toHaveProperty("sse_1");
   });
 });
 
 describe("edge cases", () => {
-  it("should handle empty mcpServers object", () => {
-    const input = { mcpServers: {} };
+  it("should handle empty server map", () => {
+    const input = {};
     const result = parseMcpConfig(input);
 
     expect(result).toEqual({
@@ -390,11 +395,9 @@ describe("edge cases", () => {
 
   it("should treat server with missing url as stdio server", () => {
     const input = {
-      mcpServers: {
-        "no-url-server": {
-          transport: "sse",
-          command: "/usr/bin/server",
-        },
+      "no-url-server": {
+        transport: "sse",
+        command: "/usr/bin/server",
       },
     };
 
@@ -410,11 +413,9 @@ describe("edge cases", () => {
 
   it("should treat unknown transport type as shttp server", () => {
     const input = {
-      mcpServers: {
-        "unknown-transport": {
-          url: "https://example.com",
-          transport: "websocket", // not "sse", so falls through to shttp
-        },
+      "unknown-transport": {
+        url: "https://example.com",
+        transport: "websocket", // not "sse", so falls through to shttp
       },
     };
 
@@ -431,11 +432,9 @@ describe("edge cases", () => {
 
   it("should handle mixed server types correctly", () => {
     const input = {
-      mcpServers: {
-        "sse-server": { url: "https://sse.com", transport: "sse" },
-        "http-server": { url: "https://http.com", transport: "http" },
-        "stdio-server": { command: "/usr/bin/cmd" },
-      },
+      "sse-server": { url: "https://sse.com", transport: "sse" },
+      "http-server": { url: "https://http.com", transport: "http" },
+      "stdio-server": { command: "/usr/bin/cmd" },
     };
 
     const result = parseMcpConfig(input);
@@ -459,19 +458,17 @@ describe("edge cases", () => {
 
   it("should handle servers with special characters in names", () => {
     const input = {
-      mcpServers: {
-        "server/with/slashes": { url: "https://s1.com", transport: "sse" },
-        "server:with:colons": { url: "https://s2.com", transport: "sse" },
-        "server with spaces": { url: "https://s3.com", transport: "sse" },
-      },
+      "server/with/slashes": { url: "https://s1.com", transport: "sse" },
+      "server:with:colons": { url: "https://s2.com", transport: "sse" },
+      "server with spaces": { url: "https://s3.com", transport: "sse" },
     };
 
     const parsed = parseMcpConfig(input);
     const serialized = toSdkMcpConfig(parsed);
 
-    expect(serialized?.mcpServers).toHaveProperty("server/with/slashes");
-    expect(serialized?.mcpServers).toHaveProperty("server:with:colons");
-    expect(serialized?.mcpServers).toHaveProperty("server with spaces");
+    expect(serialized).toHaveProperty("server/with/slashes");
+    expect(serialized).toHaveProperty("server:with:colons");
+    expect(serialized).toHaveProperty("server with spaces");
   });
 
   it("should handle cross-type name collisions", () => {
@@ -483,7 +480,7 @@ describe("edge cases", () => {
 
     const result = toSdkMcpConfig(config);
 
-    const names = Object.keys(result?.mcpServers || {});
+    const names = Object.keys(result || {});
     expect(names).toContain("myserver");
     expect(names).toContain("myserver_1");
     expect(names).toHaveLength(2);

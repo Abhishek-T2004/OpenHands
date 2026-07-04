@@ -15,8 +15,6 @@ import re
 from enum import Enum
 from typing import Annotated, Any, Sequence
 
-from fastmcp.mcp_config import MCPConfig
-from fastmcp.mcp_config import MCPConfig as SDKMCPConfig
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -31,6 +29,10 @@ from pydantic import (
 
 from openhands.app_server.integrations.provider import ProviderToken
 from openhands.app_server.integrations.service_types import ProviderType
+from openhands.app_server.mcp.mcp_config_adapter import (
+    normalize_mcp_config_payload,
+    replace_mcp_config_in_agent_settings_dump,
+)
 from openhands.app_server.settings.llm_profiles import LLMProfiles
 from openhands.app_server.utils.jsonpatch_compat import deep_merge
 from openhands.sdk.settings import (
@@ -256,8 +258,6 @@ def _coerce_value(value: Any) -> Any:
     """Unwrap SecretStr to plain values."""
     if isinstance(value, SecretStr):
         return value.get_secret_value()
-    if isinstance(value, SDKMCPConfig):
-        return value.model_dump(exclude_none=True, exclude_defaults=True) or None
     return value
 
 
@@ -282,6 +282,9 @@ def _load_persisted_agent_settings(
     ``agent_kind: 'llm'`` tag to ``'openhands'``, and validates against the
     discriminated :data:`AgentSettingsConfig` union.
     """
+    if isinstance(data, dict) and 'mcp_config' in data:
+        data = dict(data)
+        data['mcp_config'] = normalize_mcp_config_payload(data['mcp_config'])
     return validate_agent_settings(data or {})
 
 
@@ -478,7 +481,7 @@ class Settings(BaseModel):
                 dumped = new_settings.model_dump(
                     mode='json', context={'expose_secrets': True}
                 )
-                dumped['mcp_config'] = mcp_config
+                replace_mcp_config_in_agent_settings_dump(dumped, mcp_config)
                 new_settings = validate_agent_settings(dumped)
 
             # Use object.__setattr__ to avoid validate_assignment
@@ -697,7 +700,6 @@ class Settings(BaseModel):
 class POSTProviderModel(BaseModel):
     """Settings for POST requests"""
 
-    mcp_config: MCPConfig | None = None
     provider_tokens: dict[ProviderType, ProviderToken] = {}
 
 

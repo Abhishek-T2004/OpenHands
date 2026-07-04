@@ -12,6 +12,7 @@ from storage.role import Role
 from storage.user import User
 from storage.user_settings import UserSettings
 
+from openhands.app_server.mcp.mcp_config_adapter import mcp_config_server_map
 from openhands.app_server.settings.settings_models import Settings
 
 
@@ -1192,11 +1193,9 @@ async def test_update_all_members_settings_async_replaces_mcp_config(
             llm_api_key='test-key',
             agent_settings_diff={
                 'mcp_config': {
-                    'mcpServers': {
-                        'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-                        'server2': {'url': 'https://server2.com', 'transport': 'sse'},
-                        'server3': {'url': 'https://server3.com', 'transport': 'sse'},
-                    },
+                    'server1': {'url': 'https://server1.com', 'transport': 'sse'},
+                    'server2': {'url': 'https://server2.com', 'transport': 'sse'},
+                    'server3': {'url': 'https://server3.com', 'transport': 'sse'},
                 },
             },
             status='active',
@@ -1209,11 +1208,9 @@ async def test_update_all_members_settings_async_replaces_mcp_config(
     member_settings = OrgMemberSettingsUpdate(
         agent_settings_diff={
             'mcp_config': {
-                'mcpServers': {
-                    'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-                    'server2': {'url': 'https://server2.com', 'transport': 'sse'},
-                    # server3 is deleted
-                },
+                'server1': {'url': 'https://server1.com', 'transport': 'sse'},
+                'server2': {'url': 'https://server2.com', 'transport': 'sse'},
+                # server3 is deleted
             },
         },
     )
@@ -1233,8 +1230,8 @@ async def test_update_all_members_settings_async_replaces_mcp_config(
         )
         member = result.scalars().first()
 
-        mcp_servers = member.agent_settings_diff.get('mcp_config', {}).get(
-            'mcpServers', {}
+        mcp_servers = mcp_config_server_map(
+            member.agent_settings_diff.get('mcp_config')
         )
         assert len(mcp_servers) == 2, f'Expected 2 servers, got {len(mcp_servers)}'
         assert 'server1' in mcp_servers
@@ -1278,9 +1275,7 @@ async def test_update_all_members_settings_async_mcp_config_not_in_payload(
             llm_api_key='test-key',
             agent_settings_diff={
                 'mcp_config': {
-                    'mcpServers': {
-                        'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-                    },
+                    'server1': {'url': 'https://server1.com', 'transport': 'sse'},
                 },
                 'llm': {'model': 'old-model'},
             },
@@ -1316,8 +1311,10 @@ async def test_update_all_members_settings_async_mcp_config_not_in_payload(
         # LLM should be updated
         assert member.agent_settings_diff['llm']['model'] == 'new-model'
         # mcp_config should be unchanged
-        mcp_config = member.agent_settings_diff.get('mcp_config', {})
-        assert 'server1' in mcp_config.get('mcpServers', {})
+        mcp_servers = mcp_config_server_map(
+            member.agent_settings_diff.get('mcp_config')
+        )
+        assert 'server1' in mcp_servers
 
 
 @pytest.mark.asyncio
@@ -1354,10 +1351,8 @@ async def test_update_all_members_settings_async_empty_mcp_config(
             llm_api_key='test-key',
             agent_settings_diff={
                 'mcp_config': {
-                    'mcpServers': {
-                        'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-                        'server2': {'url': 'https://server2.com', 'transport': 'sse'},
-                    },
+                    'server1': {'url': 'https://server1.com', 'transport': 'sse'},
+                    'server2': {'url': 'https://server2.com', 'transport': 'sse'},
                 },
             },
             status='active',
@@ -1369,9 +1364,7 @@ async def test_update_all_members_settings_async_empty_mcp_config(
     # Act - Update with empty mcp_config (delete all servers)
     member_settings = OrgMemberSettingsUpdate(
         agent_settings_diff={
-            'mcp_config': {
-                'mcpServers': {},  # Empty - all servers deleted
-            },
+            'mcp_config': {},  # Empty - all servers deleted
         },
     )
 
@@ -1390,8 +1383,9 @@ async def test_update_all_members_settings_async_empty_mcp_config(
         )
         member = result.scalars().first()
 
-        mcp_config = member.agent_settings_diff.get('mcp_config', {})
-        mcp_servers = mcp_config.get('mcpServers', {})
+        mcp_servers = mcp_config_server_map(
+            member.agent_settings_diff.get('mcp_config')
+        )
         assert len(mcp_servers) == 0, f'Expected 0 servers, got {len(mcp_servers)}'
 
 
@@ -1441,9 +1435,7 @@ async def test_update_all_members_settings_async_add_first_mcp_server(
     member_settings = OrgMemberSettingsUpdate(
         agent_settings_diff={
             'mcp_config': {
-                'mcpServers': {
-                    'first-server': {'url': 'https://first.com', 'transport': 'sse'},
-                },
+                'first-server': {'url': 'https://first.com', 'transport': 'sse'},
             },
         },
     )
@@ -1463,8 +1455,9 @@ async def test_update_all_members_settings_async_add_first_mcp_server(
         )
         member = result.scalars().first()
 
-        mcp_config = member.agent_settings_diff.get('mcp_config', {})
-        mcp_servers = mcp_config.get('mcpServers', {})
+        mcp_servers = mcp_config_server_map(
+            member.agent_settings_diff.get('mcp_config')
+        )
         assert len(mcp_servers) == 1
         assert 'first-server' in mcp_servers
 
@@ -1503,11 +1496,9 @@ async def test_update_all_members_settings_async_update_server_url(
             llm_api_key='test-key',
             agent_settings_diff={
                 'mcp_config': {
-                    'mcpServers': {
-                        'myserver': {
-                            'url': 'https://old-url.com',
-                            'transport': 'sse',
-                        },
+                    'myserver': {
+                        'url': 'https://old-url.com',
+                        'transport': 'sse',
                     },
                 },
             },
@@ -1521,11 +1512,9 @@ async def test_update_all_members_settings_async_update_server_url(
     member_settings = OrgMemberSettingsUpdate(
         agent_settings_diff={
             'mcp_config': {
-                'mcpServers': {
-                    'myserver': {
-                        'url': 'https://new-url.com',
-                        'transport': 'sse',
-                    },
+                'myserver': {
+                    'url': 'https://new-url.com',
+                    'transport': 'sse',
                 },
             },
         },
@@ -1546,7 +1535,8 @@ async def test_update_all_members_settings_async_update_server_url(
         )
         member = result.scalars().first()
 
-        mcp_config = member.agent_settings_diff.get('mcp_config', {})
-        mcp_servers = mcp_config.get('mcpServers', {})
+        mcp_servers = mcp_config_server_map(
+            member.agent_settings_diff.get('mcp_config')
+        )
         assert len(mcp_servers) == 1
         assert mcp_servers['myserver']['url'] == 'https://new-url.com'

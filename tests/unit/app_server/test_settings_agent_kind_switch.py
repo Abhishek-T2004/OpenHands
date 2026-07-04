@@ -13,6 +13,7 @@ is tracked as a follow-up.
 
 from __future__ import annotations
 
+from openhands.app_server.mcp.mcp_config_adapter import mcp_config_server_map
 from openhands.app_server.settings.settings_models import (
     Settings,
     _load_persisted_agent_settings,
@@ -100,9 +101,8 @@ def test_replace_mcp_config_in_kind_switch():
     s = Settings()
     s.update(_set_acp())
 
-    s.update(_set_openhands(mcp_config={'mcpServers': {'foo': {'command': 'foo-bin'}}}))
-    assert s.agent_settings.mcp_config is not None
-    assert 'foo' in s.agent_settings.mcp_config.mcpServers
+    s.update(_set_openhands(mcp_config={'foo': {'command': 'foo-bin'}}))
+    assert 'foo' in mcp_config_server_map(s.agent_settings.mcp_config)
 
 
 def test_loader_normalizes_legacy_llm_tag_at_current_schema_version():

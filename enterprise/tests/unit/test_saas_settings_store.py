@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from pydantic import SecretStr
 
+from openhands.app_server.mcp.mcp_config_adapter import mcp_config_server_map
 from openhands.app_server.settings.settings_models import Settings
 from openhands.app_server.settings.settings_models import Settings as DataSettings
 
@@ -119,11 +120,9 @@ def test_persisted_agent_settings_preserves_private_mcp_auth_headers():
                     'api_key': 'llm-secret-key',
                 },
                 'mcp_config': {
-                    'mcpServers': {
-                        'integrations-hub': {
-                            'url': 'https://integrations.example.com/api/mcp',
-                            'headers': {'Authorization': 'Bearer ih-secret-key'},
-                        },
+                    'integrations-hub': {
+                        'url': 'https://integrations.example.com/api/mcp',
+                        'headers': {'Authorization': 'Bearer ih-secret-key'},
                     },
                 },
             },
@@ -131,11 +130,10 @@ def test_persisted_agent_settings_preserves_private_mcp_auth_headers():
     )
 
     persisted = SaasSettingsStore._get_persisted_agent_settings(settings)
+    servers = mcp_config_server_map(persisted['mcp_config'])
 
     assert (
-        persisted['mcp_config']['mcpServers']['integrations-hub']['headers'][
-            'Authorization'
-        ]
+        servers['integrations-hub']['headers']['Authorization']
         == 'Bearer ih-secret-key'
     )
     assert 'api_key' not in persisted['llm']
@@ -755,9 +753,7 @@ async def test_store_keeps_mcp_config_private_to_acting_member(
     member2_user_id = str(fixture['member2_user_id'])
 
     user_mcp_config = {
-        'mcpServers': {
-            'user1': {'url': 'https://user1-mcp-server.com', 'transport': 'sse'}
-        },
+        'user1': {'url': 'https://user1-mcp-server.com', 'transport': 'sse'}
     }
     new_settings = DataSettings()
     new_settings.update(
@@ -792,9 +788,10 @@ async def test_store_keeps_mcp_config_private_to_acting_member(
         }
 
     assert 'mcp_config' not in org.agent_settings
-    assert (
-        members[admin_user_id].agent_settings_diff.get('mcp_config') == user_mcp_config
+    admin_servers = mcp_config_server_map(
+        members[admin_user_id].agent_settings_diff.get('mcp_config')
     )
+    assert admin_servers == user_mcp_config
     assert 'mcp_config' not in members[member1_user_id].agent_settings_diff
     assert 'mcp_config' not in members[member2_user_id].agent_settings_diff
 
@@ -884,9 +881,7 @@ async def test_store_and_load_mcp_config_via_agent_settings(
     admin_user_id = str(fixture['admin_user_id'])
 
     admin_mcp_config = {
-        'mcpServers': {
-            'admin': {'url': 'https://admin-private-server.com', 'transport': 'sse'}
-        },
+        'admin': {'url': 'https://admin-private-server.com', 'transport': 'sse'}
     }
 
     admin_store = SaasSettingsStore(admin_user_id)
@@ -917,10 +912,8 @@ async def test_store_and_load_mcp_config_via_agent_settings(
 
     assert loaded is not None
     assert loaded.agent_settings.mcp_config is not None
-    assert (
-        loaded.agent_settings.mcp_config.mcpServers['admin'].url
-        == 'https://admin-private-server.com'
-    )
+    servers = mcp_config_server_map(loaded.agent_settings.mcp_config)
+    assert servers['admin'].url == 'https://admin-private-server.com'
 
 
 @pytest.mark.asyncio
@@ -943,9 +936,7 @@ async def test_load_drops_legacy_org_level_mcp_config(
     member1_user_id = str(fixture['member1_user_id'])
 
     legacy_org_mcp_config = {
-        'mcpServers': {
-            'leaked': {'url': 'https://leaked-server.com', 'transport': 'sse'}
-        },
+        'leaked': {'url': 'https://leaked-server.com', 'transport': 'sse'},
     }
     with session_maker() as session:
         org = session.execute(select(Org).where(Org.id == org_id)).scalars().first()
@@ -974,7 +965,7 @@ async def test_load_drops_legacy_org_level_mcp_config(
 
     # Assert — legacy org mcp_config is not inherited by member1
     assert loaded is not None
-    assert loaded.agent_settings.mcp_config is None
+    assert mcp_config_server_map(loaded.agent_settings.mcp_config) == {}
 
 
 @pytest.mark.asyncio
@@ -1253,11 +1244,9 @@ async def test_store_replaces_mcp_config_on_delete(
 
     store = SaasSettingsStore(admin_user_id)
     initial_mcp_config = {
-        'mcpServers': {
-            'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-            'server2': {'url': 'https://server2.com', 'transport': 'sse'},
-            'server3': {'url': 'https://server3.com', 'transport': 'sse'},
-        },
+        'server1': {'url': 'https://server1.com', 'transport': 'sse'},
+        'server2': {'url': 'https://server2.com', 'transport': 'sse'},
+        'server3': {'url': 'https://server3.com', 'transport': 'sse'},
     }
     initial_settings = DataSettings()
     initial_settings.update(
@@ -1277,10 +1266,8 @@ async def test_store_replaces_mcp_config_on_delete(
 
     # Act — re-save with server3 removed
     updated_mcp_config = {
-        'mcpServers': {
-            'server1': {'url': 'https://server1.com', 'transport': 'sse'},
-            'server2': {'url': 'https://server2.com', 'transport': 'sse'},
-        },
+        'server1': {'url': 'https://server1.com', 'transport': 'sse'},
+        'server2': {'url': 'https://server2.com', 'transport': 'sse'},
     }
     updated_settings = DataSettings()
     updated_settings.update(
@@ -1310,10 +1297,8 @@ async def test_store_replaces_mcp_config_on_delete(
             .all()
         }
 
-    admin_servers = (
-        members[admin_user_id]
-        .agent_settings_diff.get('mcp_config', {})
-        .get('mcpServers', {})
+    admin_servers = mcp_config_server_map(
+        members[admin_user_id].agent_settings_diff.get('mcp_config')
     )
     assert set(admin_servers.keys()) == {'server1', 'server2'}
     assert 'mcp_config' not in members[member1_user_id].agent_settings_diff

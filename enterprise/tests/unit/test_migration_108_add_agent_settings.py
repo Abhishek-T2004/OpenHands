@@ -3,6 +3,8 @@ from pathlib import Path
 
 from storage.user_settings import UserSettings
 
+from openhands.app_server.mcp.mcp_config_adapter import mcp_config_server_map
+
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / 'migrations'
@@ -169,10 +171,10 @@ def test_migrated_payload_loads_via_user_settings_to_settings():
     assert settings.agent_settings.condenser.enabled is False
     assert settings.agent_settings.condenser.max_size == 128
     assert settings.agent_settings.mcp_config is not None
+    admin = mcp_config_server_map(settings.agent_settings.mcp_config)['admin']
     assert (
-        settings.agent_settings.mcp_config.mcpServers['admin'].url
-        == 'https://mcp.example.com'
-    )
+        admin['url'] if isinstance(admin, dict) else admin.url
+    ) == 'https://mcp.example.com'
     assert settings.conversation_settings.max_iterations == 42
     assert settings.conversation_settings.confirmation_mode is True
     assert settings.conversation_settings.security_analyzer == 'llm'

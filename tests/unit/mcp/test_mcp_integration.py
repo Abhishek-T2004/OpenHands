@@ -3,29 +3,26 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastmcp.mcp_config import MCPConfig, RemoteMCPServer
 
+from openhands.app_server.mcp.mcp_config_adapter import mcp_config_server_map
 from openhands.app_server.settings.file_settings_store import FileSettingsStore
 from openhands.app_server.settings.settings_models import Settings
 from openhands.app_server.user_auth.default_user_auth import DefaultUserAuth
-from openhands.sdk.llm import LLM
-from openhands.sdk.settings import OpenHandsAgentSettings
 
 
 @pytest.mark.asyncio
 async def test_user_auth_returns_stored_settings():
     """Test that user auth returns stored settings."""
     stored_settings = Settings(
-        agent_settings=OpenHandsAgentSettings(
-            llm=LLM(model='anthropic/claude-sonnet-4-5-20250929'),
-            mcp_config=MCPConfig(
-                mcpServers={
-                    'frontend': RemoteMCPServer(
-                        url='http://frontend-server.com', transport='sse'
-                    )
+        agent_settings={
+            'llm': {'model': 'anthropic/claude-sonnet-4-5-20250929'},
+            'mcp_config': {
+                'frontend': {
+                    'url': 'http://frontend-server.com',
+                    'transport': 'sse',
                 }
-            ),
-        ),
+            },
+        },
     )
 
     user_auth = DefaultUserAuth()
@@ -40,26 +37,24 @@ async def test_user_auth_returns_stored_settings():
 
     assert settings is not None
     assert settings.agent_settings.llm.model == 'anthropic/claude-sonnet-4-5-20250929'
-    mcp = settings.agent_settings.mcp_config
-    assert mcp is not None
-    assert len(mcp.mcpServers) == 1
-    assert 'frontend' in mcp.mcpServers
+    servers = mcp_config_server_map(settings.agent_settings.mcp_config)
+    assert len(servers) == 1
+    assert 'frontend' in servers
 
 
 @pytest.mark.asyncio
 async def test_user_auth_caching_behavior():
     """Test that user auth caches settings correctly."""
     stored_settings = Settings(
-        agent_settings=OpenHandsAgentSettings(
-            llm=LLM(model='anthropic/claude-sonnet-4-5-20250929'),
-            mcp_config=MCPConfig(
-                mcpServers={
-                    'frontend': RemoteMCPServer(
-                        url='http://frontend-server.com', transport='sse'
-                    )
+        agent_settings={
+            'llm': {'model': 'anthropic/claude-sonnet-4-5-20250929'},
+            'mcp_config': {
+                'frontend': {
+                    'url': 'http://frontend-server.com',
+                    'transport': 'sse',
                 }
-            ),
-        ),
+            },
+        },
     )
 
     user_auth = DefaultUserAuth()
