@@ -129,6 +129,8 @@ Backend:
   - All tests are in `tests/unit/test_*.py`
   - To test new code, run `poetry run pytest tests/unit/test_xxx.py` where `xxx` is the appropriate file for the current functionality
   - Write all tests with pytest
+  - Enterprise unit tests live under `enterprise/tests`; run them with `PYTHONPATH=enterprise poetry run pytest enterprise/tests/unit/test_xxx.py`
+
 
 Frontend:
 - Located in the `frontend` directory
