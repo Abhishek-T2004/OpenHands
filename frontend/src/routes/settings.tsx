@@ -63,7 +63,6 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
   const isSaas = config?.app_mode === "saas";
   const featureFlags = config?.feature_flags;
 
-
   if (pathname === "/settings/admin-dashboard") {
     return redirect(isSaas ? "/settings/usage-monitoring" : "/settings");
   }

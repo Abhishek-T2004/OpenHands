@@ -1,8 +1,5 @@
-import React from "react";
-import { redirect } from "react-router";
-
-export const loader = () => redirect("/settings/usage-monitoring");
+import { Navigate } from "react-router";
 
 export default function AdminDashboardPage() {
-  return null;
+  return <Navigate to="/settings/usage-monitoring" replace />;
 }
