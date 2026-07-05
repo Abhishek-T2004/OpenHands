@@ -1093,6 +1093,9 @@ def _build_budget_response(state: dict) -> OrgBudgetSettingsResponse:
     return OrgBudgetSettingsResponse(
         enabled=settings.enabled,
         monthly_limit=settings.monthly_limit,
+        litellm_last_sync_at=settings.litellm_last_sync_at,
+        litellm_last_sync_status=settings.litellm_last_sync_status,
+        litellm_last_sync_error=settings.litellm_last_sync_error,
         reset_day=settings.reset_day,
         slack_channel=settings.slack_channel,
         slack_team_id=settings.slack_team_id,
@@ -1123,7 +1126,7 @@ def _build_budget_response(state: dict) -> OrgBudgetSettingsResponse:
 )
 async def get_org_budget_settings(
     org_id: UUID,
-    user_id: str = Depends(require_financial_data_access),
+    user_id: str = Depends(require_permission(Permission.EDIT_ORG_SETTINGS)),
     users_page: int = Query(1, ge=1),
     users_per_page: int = Query(50, ge=1, le=1000),
     users_search: str | None = Query(None, max_length=200),
@@ -1151,7 +1154,7 @@ async def get_org_budget_settings(
 async def update_org_budget_settings(
     org_id: UUID,
     update: OrgBudgetSettingsUpdate,
-    user_id: str = Depends(require_financial_data_access),
+    user_id: str = Depends(require_permission(Permission.EDIT_ORG_SETTINGS)),
     users_page: int = Query(1, ge=1),
     users_per_page: int = Query(50, ge=1, le=1000),
     users_search: str | None = Query(None, max_length=200),
@@ -1181,7 +1184,7 @@ async def upsert_org_budget_override(
     org_id: UUID,
     user_id: str,
     update: OrgBudgetUserOverrideUpdate,
-    current_user_id: str = Depends(require_financial_data_access),
+    current_user_id: str = Depends(require_permission(Permission.EDIT_ORG_SETTINGS)),
     budget_service: OrgBudgetService = org_budget_service_dependency,
 ) -> OrgBudgetUserResponse:
     logger.info(
@@ -1214,7 +1217,7 @@ async def upsert_org_budget_override(
 async def delete_org_budget_override(
     org_id: UUID,
     user_id: str,
-    current_user_id: str = Depends(require_financial_data_access),
+    current_user_id: str = Depends(require_permission(Permission.EDIT_ORG_SETTINGS)),
     budget_service: OrgBudgetService = org_budget_service_dependency,
 ) -> None:
     logger.info(
